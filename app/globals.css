@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-shopee: #ee4d2d;
+  --color-tiktokshop: #111114;
+  --color-lazada: #0f146d;
+  /* Brand tokens from app/public design mockups */
+  --color-ink: #1b1b1f; /* dark buttons, user bubble, consent sheet */
+  --color-cream: #f1ece0; /* best-pick "NHIỀU ƯU ĐÃI" wrapper */
+  --color-cream-label: #8a7a4f;
+  --color-note: #8a6d1f; /* olive/amber fallback note in no-match reply */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

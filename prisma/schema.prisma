@@ -1,0 +1,62 @@
+// Data model per PRD §9.
+// Prices are integer VND. ClickEvent carries the F10/F11 attribution fields:
+// unique clickId (conversion join key), isWebview (UA-detected in-app browser),
+// nullable completedAt (redirect-completion signal).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id            String    @id @default(cuid())
+  productId     String // AccessTrade product_id
+  merchant      String // shopee | lazada | tiktokshop
+  domain        String
+  name          String
+  price         Int // integer VND
+  originalPrice Int?
+  image         String?
+  category      String?
+  affLink       String // AccessTrade deeplink (never sent to client raw)
+  salesRank     Int? // from top_products; feeds quality proxy
+  rating        Float? // reserved; backfilled from platform APIs later
+  updatedAt     DateTime  @updatedAt
+  vouchers      Voucher[]
+
+  @@unique([merchant, productId])
+  @@index([merchant, category])
+}
+
+model Voucher {
+  id        String    @id @default(cuid())
+  merchant  String
+  domain    String
+  content   String
+  code      String?
+  affLink   String
+  endTime   DateTime?
+  productId String?
+  product   Product?  @relation(fields: [productId], references: [id])
+
+  @@index([merchant, endTime])
+}
+
+model ClickEvent {
+  id          String    @id @default(cuid())
+  clickId     String    @unique // cookie + query param ↔ conversion join key (F11)
+  productId   String
+  merchant    String
+  campaign    String?
+  ipHash      String? // salted hash — never raw IP (PDPL)
+  ua          String?
+  isWebview   Boolean   @default(false) // UA-detected in-app browser (F10)
+  completedAt DateTime? // redirect-completion signal (F10)
+  createdAt   DateTime  @default(now())
+
+  @@index([productId, createdAt])
+}
