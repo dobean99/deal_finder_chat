@@ -10,3 +10,6 @@ playwright-report/
 *.tsbuildinfo
 next-env.d.ts
 logs/
+
+.vercel
+.env*

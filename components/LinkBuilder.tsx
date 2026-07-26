@@ -68,7 +68,7 @@ export function LinkBuilder() {
         Tạo link
       </h2>
       <p className="mt-3 text-lg text-neutral-500">
-        Ủng hộ mình 1 bằng cách tạo link và mua hàng bằng link bên dưới nhé!
+        Ủng hộ mình bằng cách tạo link và mua hàng bằng link bên dưới nhé!
       </p>
 
       <form

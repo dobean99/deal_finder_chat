@@ -10,8 +10,9 @@
 // set the df_click cookie) then POST /api/track/complete — stamping
 // completedAt on the ClickEvent (F10 redirect-completion signal).
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatResponse } from "@/app/api/chat/route";
+import type { SuggestionsResponse } from "@/app/api/suggestions/route";
 import { LinkBuilder } from "@/components/LinkBuilder";
 import { ProductCard } from "@/components/ProductCard";
 import { ServiceCard } from "@/components/ServiceCard";
@@ -23,12 +24,14 @@ interface Turn {
   response?: ChatResponse;
 }
 
+// Static fallback — replaced by /api/suggestions ("hot" = our own 30-day
+// click data + best-sellers) once it responds.
 const EXAMPLES = [
   "Tai nghe chống ồn dưới 1 triệu",
   "Máy xay sinh tố cầm tay",
   "Giày chạy bộ nam khoảng 800k",
   "Nồi chiên không dầu có voucher",
-];
+].map((text) => ({ text, hot: false }));
 
 function fireCompletionBeacon() {
   setTimeout(() => {
@@ -51,8 +54,20 @@ export function Chat({ banners = [] }: { banners?: BannerItem[] }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chips, setChips] = useState(EXAMPLES);
   const lastPromptRef = useRef<string>("");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch("/api/suggestions")
+      .then((r) => (r.ok ? (r.json() as Promise<SuggestionsResponse>) : null))
+      .then((data) => {
+        if (data && data.chips.length > 0) setChips(data.chips);
+      })
+      .catch(() => {
+        /* keep static examples */
+      });
+  }, []);
 
   async function send(prompt: string, isRetry = false) {
     const trimmed = prompt.trim();
@@ -214,13 +229,14 @@ export function Chat({ banners = [] }: { banners?: BannerItem[] }) {
           <div className="fixed inset-x-0 bottom-0 bg-neutral-50/95 backdrop-blur">
             <div className="mx-auto max-w-3xl space-y-3 px-4 py-3 lg:max-w-5xl">
               <div className="-mx-4 flex gap-2 overflow-x-auto px-4">
-                {EXAMPLES.map((ex) => (
+                {chips.map((ex) => (
                   <button
-                    key={ex}
-                    onClick={() => void send(ex)}
+                    key={ex.text}
+                    onClick={() => void send(ex.text)}
                     className="min-h-11 shrink-0 rounded-full border border-neutral-200 bg-white px-4 text-sm font-medium text-neutral-800 focus:outline-2 focus:outline-offset-2 focus:outline-ink"
                   >
-                    {ex}
+                    {ex.hot ? "🔥 " : ""}
+                    {ex.text}
                   </button>
                 ))}
               </div>

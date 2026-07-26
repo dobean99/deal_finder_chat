@@ -20,7 +20,27 @@ export interface ProductDoc {
   hasVoucher: boolean;
   salesRank: number; // 0 = unknown
   image: string;
+  // `embedding` (float[]) also exists on hybrid-enabled collections — auto-
+  // computed by Typesense from `name`; never set or read by application code.
 }
+
+/**
+ * Auto-embedding field for hybrid (keyword + semantic) search. Typesense
+ * computes it server-side from `name` on import and embeds the query at
+ * search time. Model choice is empirical: multilingual-e5-small ordered
+ * Vietnamese probes wrongly (near-identical distances); mpnet separates them
+ * cleanly (see scripts/enable-hybrid-search.ts history, 2026-07-26).
+ * Existing installs are upgraded by scripts/enable-hybrid-search.ts; search()
+ * detects the field at runtime, so code and index can deploy independently.
+ */
+export const EMBEDDING_FIELD = {
+  name: "embedding",
+  type: "float[]" as const,
+  embed: {
+    from: ["name"],
+    model_config: { model_name: "ts/paraphrase-multilingual-mpnet-base-v2" },
+  },
+};
 
 let client: Client | null = null;
 
@@ -41,7 +61,13 @@ export function getTypesense(): Client {
   return client;
 }
 
-/** Idempotently create the products collection. */
+/**
+ * Idempotently create the products collection. Tries hybrid (with the
+ * embedding field) first; if the Typesense node can't load the model —
+ * "memory required ... exceeds free memory", seen on small cloud clusters —
+ * falls back to keyword-only so ingestion never bricks on cluster sizing.
+ * search() detects the field at runtime either way.
+ */
 export async function ensureCollection(): Promise<void> {
   const ts = getTypesense();
   const exists = await ts
@@ -49,6 +75,18 @@ export async function ensureCollection(): Promise<void> {
     .exists()
     .catch(() => false);
   if (exists) return;
+  try {
+    await createCollection(true);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/memory/i.test(msg)) throw e;
+    console.warn(`[typesense] embedding model doesn't fit this node (${msg}) — creating keyword-only collection`);
+    await createCollection(false);
+  }
+}
+
+async function createCollection(withEmbedding: boolean): Promise<void> {
+  const ts = getTypesense();
   await ts.collections().create({
     name: COLLECTION,
     fields: [
@@ -62,9 +100,25 @@ export async function ensureCollection(): Promise<void> {
       { name: "hasVoucher", type: "bool", facet: true },
       { name: "salesRank", type: "int32", optional: true },
       { name: "image", type: "string", index: false, optional: true },
+      ...(withEmbedding ? [EMBEDDING_FIELD] : []),
     ],
     default_sorting_field: "price",
   });
+}
+
+// Whether the live collection carries the embedding field (pre-migration
+// installs don't). Cached after first probe; reset is a process restart.
+let hybridProbe: Promise<boolean> | null = null;
+function hybridEnabled(): Promise<boolean> {
+  hybridProbe ??= getTypesense()
+    .collections(COLLECTION)
+    .retrieve()
+    .then((schema) => schema.fields?.some((f) => f.name === EMBEDDING_FIELD.name) ?? false)
+    .catch(() => {
+      hybridProbe = null; // transient failure — probe again next search
+      return false;
+    });
+  return hybridProbe;
 }
 
 export async function upsertProducts(docs: ProductDoc[]): Promise<void> {
@@ -140,13 +194,22 @@ export async function search(intent: SearchIntent, opts: SearchOptions = {}): Pr
     ? "*"
     : [intent.brand, ...intent.keywords].filter(Boolean).join(" ") || "*";
 
+  // Hybrid (keyword + semantic) when the index has embeddings and there are
+  // actual query terms; wildcard/category browses stay keyword-only.
+  const hybrid = queryTerms !== "*" && (await hybridEnabled());
+
   // Category boost (not filter): thousands of accessories carry a model name
   // ("Ốp lưng iPhone …") and tie on text match, so without this the cheapest
   // accessories fill the candidate pool before any actual phone/TV/etc. Docs
   // in the intent's category sort first; half-empty category data can then
   // only demote, never exclude.
-  const sortBy =
-    queryTerms === "*"
+  // In hybrid mode we omit sort_by entirely: Typesense orders by rank fusion
+  // (0.7 keyword / 0.3 semantic), and a custom sort would zero out the
+  // semantic side (paraphrase matches have no _text_match). Category
+  // preference + exactness are enforced by the post-filters below either way.
+  const sortBy = hybrid
+    ? undefined
+    : queryTerms === "*"
       ? "price:asc"
       : slug
         ? `_eval(category:=${slug}):desc,_text_match:desc,price:asc`
@@ -154,7 +217,7 @@ export async function search(intent: SearchIntent, opts: SearchOptions = {}): Pr
 
   const res = await ts.collections<ProductDoc>(COLLECTION).documents().search({
     q: queryTerms,
-    query_by: "name",
+    query_by: hybrid ? "name,embedding" : "name",
     num_typos: 2,
     // Weight matches near the start of the name so the over-fetched pool holds
     // actual products, not just the cheapest accessories mentioning the term.
@@ -162,6 +225,7 @@ export async function search(intent: SearchIntent, opts: SearchOptions = {}): Pr
     filter_by: filters.join(" && ") || undefined,
     per_page: opts.limit ?? MAX_RESULTS * 3, // over-fetch; rank() trims later
     sort_by: sortBy,
+    exclude_fields: hybrid ? "embedding" : undefined,
   });
 
   let hits = res.hits ?? [];

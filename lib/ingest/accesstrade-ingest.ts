@@ -10,6 +10,7 @@
 // price, original_price, image, category, aff_link). Adjust parseCsv mapping
 // if the actual export differs.
 
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { getAccessTrade, type AtDatafeedItem } from "@/lib/affiliate/accesstrade";
 import { upsertProducts, type ProductDoc } from "@/lib/search/typesense";
@@ -83,7 +84,13 @@ function toProductFields(item: AtDatafeedItem) {
   };
 }
 
-/** Upsert product rows into Postgres, then sync Typesense. */
+/**
+ * Upsert product rows into Postgres, then sync Typesense. Batched raw SQL
+ * (one INSERT … ON CONFLICT per 500 rows) — the per-row Prisma upsert cost
+ * ~80ms×n against remote Postgres (Neon), turning a nightly into hours.
+ * COALESCE on category: the feed's `cate` is usually empty, and blindly
+ * overwriting would wipe the LLM-assigned categories every night.
+ */
 async function upsertAndIndex(items: AtDatafeedItem[]): Promise<number> {
   const docs: ProductDoc[] = [];
   const voucherMerchants = await merchantsWithActiveVouchers();
@@ -91,30 +98,67 @@ async function upsertAndIndex(items: AtDatafeedItem[]): Promise<number> {
   // dienmayxanh.com: 2,944,480,000) overflow it. No consumer deal costs that
   // much — skip rather than crash the whole job.
   const MAX_PRICE_VND = 2_000_000_000;
+  // Dedupe by natural key — a repeated row within one statement would trip
+  // "ON CONFLICT cannot affect row a second time".
+  const byKey = new Map<string, AtDatafeedItem>();
   for (const item of items) {
     if (!item.product_id || !item.aff_link || !Number.isFinite(item.price)) continue;
     if (item.price <= 0 || item.price > MAX_PRICE_VND) continue;
-    const fields = toProductFields(item);
-    const product = await prisma.product.upsert({
-      where: { merchant_productId: { merchant: item.merchant, productId: item.product_id } },
-      create: {
-        productId: item.product_id,
-        merchant: item.merchant,
-        ...fields,
-      },
-      update: fields,
+    byKey.set(`${item.merchant}:${item.product_id}`, item);
+  }
+  const valid = [...byKey.values()];
+
+  const BATCH = 500;
+  for (let i = 0; i < valid.length; i += BATCH) {
+    const chunk = valid.slice(i, i + BATCH);
+    const params: unknown[] = [];
+    const tuples = chunk.map((item, j) => {
+      const f = toProductFields(item);
+      params.push(
+        randomUUID(), // only used for new rows; conflicts keep their id
+        item.product_id,
+        item.merchant,
+        f.domain,
+        f.name,
+        f.price,
+        f.originalPrice,
+        f.image,
+        f.category,
+        f.affLink,
+      );
+      const b = j * 10;
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},now())`;
     });
-    docs.push({
-      id: product.id,
-      product: product.id,
-      name: product.name,
-      merchant: product.merchant,
-      category: product.category ?? "",
-      price: product.price,
-      hasVoucher: voucherMerchants.has(product.merchant),
-      salesRank: product.salesRank ?? 0,
-      image: product.image ?? "",
-    });
+    const rows = await prisma.$queryRawUnsafe<
+      { id: string; merchant: string; name: string; category: string | null; price: number; salesRank: number | null; image: string | null }[]
+    >(
+      `INSERT INTO "Product" (id, "productId", merchant, domain, name, price, "originalPrice", image, category, "affLink", "updatedAt")
+       VALUES ${tuples.join(",")}
+       ON CONFLICT (merchant, "productId") DO UPDATE SET
+         name = EXCLUDED.name,
+         price = EXCLUDED.price,
+         "originalPrice" = EXCLUDED."originalPrice",
+         image = EXCLUDED.image,
+         category = COALESCE(EXCLUDED.category, "Product".category),
+         "affLink" = EXCLUDED."affLink",
+         domain = EXCLUDED.domain,
+         "updatedAt" = now()
+       RETURNING id, merchant, name, category, price, "salesRank", image`,
+      ...params,
+    );
+    docs.push(
+      ...rows.map((p) => ({
+        id: p.id,
+        product: p.id,
+        name: p.name,
+        merchant: p.merchant,
+        category: p.category ?? "",
+        price: p.price,
+        hasVoucher: voucherMerchants.has(p.merchant),
+        salesRank: p.salesRank ?? 0,
+        image: p.image ?? "",
+      })),
+    );
   }
   await upsertProducts(docs);
   return docs.length;
@@ -216,12 +260,23 @@ export async function ingestProducts(domain: string, cat?: string): Promise<Inge
   return { job: "products", processed, skippedUnapproved: skipped };
 }
 
-/** Vouchers via /offers_informations (D6), refreshed every 6h (D3). */
+/**
+ * Vouchers via /offers_informations (D6), refreshed every 6h (D3).
+ * Idempotent on the natural key (merchant, content). Existing rows are
+ * prefetched once and only diffs are written — the previous per-offer
+ * findFirst+upsert was ~2 round-trips × 8k offers, which remote Postgres
+ * (Neon) stretched to ~25 minutes.
+ */
 export async function ingestVouchers(merchant?: string): Promise<IngestResult> {
   const approved = await approvedMerchants();
   const at = getAccessTrade();
   let processed = 0;
   let skipped = 0;
+
+  const existing = new Map(
+    (await prisma.voucher.findMany()).map((v) => [`${v.merchant}:${v.content}`, v]),
+  );
+  const creates: { merchant: string; domain: string; content: string; code: string | null; affLink: string; endTime: Date | null }[] = [];
 
   for (let page = 1; page <= MAX_API_PAGES; page++) {
     const res = await at.offers(merchant, page, PAGE_LIMIT);
@@ -240,25 +295,27 @@ export async function ingestVouchers(merchant?: string): Promise<IngestResult> {
       const endTime = o.end_time ? new Date(`${o.end_time}T23:59:59Z`) : null;
       if (endTime && Number.isNaN(endTime.getTime())) continue; // unparseable date
 
-      // Idempotent upsert keyed by (merchant, content): delete-then-create
-      // would churn ids, so match on the natural key instead.
-      const existing = await prisma.voucher.findFirst({
-        where: { merchant: m, content: o.content },
-      });
-      const data = {
-        merchant: m,
-        domain: o.domain,
-        content: o.content,
-        code,
-        affLink: o.aff_link,
-        endTime,
-      };
-      if (existing) await prisma.voucher.update({ where: { id: existing.id }, data });
-      else await prisma.voucher.create({ data });
+      const data = { merchant: m, domain: o.domain, content: o.content, code, affLink: o.aff_link, endTime };
+      const prev = existing.get(`${m}:${o.content}`);
+      if (!prev) {
+        creates.push(data);
+      } else if (
+        prev.domain !== data.domain ||
+        prev.code !== data.code ||
+        prev.affLink !== data.affLink ||
+        (prev.endTime?.getTime() ?? null) !== (data.endTime?.getTime() ?? null)
+      ) {
+        await prisma.voucher.update({ where: { id: prev.id }, data });
+      }
       processed++;
     }
     if (offers.length < PAGE_LIMIT) break;
   }
+
+  // Feed can repeat (merchant, content) across pages — last one wins, and a
+  // single createMany keeps this one round-trip.
+  const dedupedCreates = [...new Map(creates.map((c) => [`${c.merchant}:${c.content}`, c])).values()];
+  if (dedupedCreates.length > 0) await prisma.voucher.createMany({ data: dedupedCreates });
 
   // Drop expired vouchers so hasVoucher stays honest.
   await prisma.voucher.deleteMany({ where: { endTime: { lt: new Date() } } });
