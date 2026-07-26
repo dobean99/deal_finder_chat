@@ -80,7 +80,7 @@ machine and not needed for v1.
 Core smoke spec to keep passing (create as `e2e/chat.spec.ts` if missing):
 1. Empty state renders: header "Tìm deal", hero "Bạn cần mua gì?", chips.
 2. Click a suggestion chip → user bubble appears → product cards render with
-   a CTA link; affiliate disclosure text is visible.
+   a CTA link.
 3. Best pick (first exact-match card) shows "Đáng mua nhất" and the
    "NHIỀU ƯU ĐÃI" wrapper.
 4. CTA href `/go/...` responds with a redirect to the merchant URL.

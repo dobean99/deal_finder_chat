@@ -7,14 +7,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseIntent } from "@/lib/intent/parse";
 import { search, listCategories } from "@/lib/search/typesense";
+import { categorySlug, categoryLabel } from "@/lib/search/categories";
 import { rank, type Candidate, type SearchIntent } from "@/lib/affiliate/ranking";
 import { prisma } from "@/lib/db";
-import { MAX_RESULTS } from "@/lib/config";
+import { MAX_RESULTS, SERVICE_MERCHANTS } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export type MatchLevel = "exact" | "price-relaxed" | "category" | "adjacent";
+export type MatchLevel = "exact" | "price-relaxed" | "category" | "adjacent" | "service";
+
+/** Referral card for service needs (tickets/booking) — no product datafeed
+ * exists for these merchants, so the chat links to them directly (tracked). */
+export interface ServiceCard {
+  slug: string;
+  label: string;
+  tagline: string;
+  merchant: string;
+  href: string; // /go/s/{slug}?d=destination
+}
 
 export interface ResultCard {
   id: string;
@@ -34,6 +45,23 @@ export interface ChatResponse {
   matchLevel: MatchLevel;
   results: ResultCard[];
   adjacentCategories?: string[];
+  services?: ServiceCard[];
+}
+
+/** Configured referral merchants for a service intent (fails closed per
+ * merchant: unset campaign env var or missing publisher id → not offered). */
+function serviceCards(intent: SearchIntent): ServiceCard[] {
+  if (!intent.serviceType || !process.env.ACCESSTRADE_PUBLISHER_ID) return [];
+  const d = intent.destination?.trim();
+  return SERVICE_MERCHANTS.filter(
+    (s) => s.serviceTypes.includes(intent.serviceType!) && process.env[s.envVar],
+  ).map((s) => ({
+    slug: s.slug,
+    label: s.label,
+    tagline: s.tagline,
+    merchant: s.merchant,
+    href: `/go/s/${s.slug}${d ? `?d=${encodeURIComponent(d)}` : ""}`,
+  }));
 }
 
 /** Join active vouchers + fresh price/salesRank from Postgres onto search hits. */
@@ -71,6 +99,8 @@ async function hydrate(candidates: Candidate[]): Promise<Candidate[]> {
         image: p.image ?? undefined,
         category: p.category ?? undefined,
         salesRank: p.salesRank ?? undefined,
+        clicks30d: p.clicks30d,
+        completions30d: p.completions30d,
         vouchers: (byMerchant.get(p.merchant) ?? []).map((v) => ({
           id: v.id,
           content: v.content,
@@ -104,6 +134,7 @@ const REPLIES: Record<MatchLevel, string> = {
   "price-relaxed": "Không có đúng tầm giá đó — đây là những lựa chọn gần nhất:",
   category: "Không tìm thấy đúng sản phẩm — đây là các lựa chọn cùng danh mục:",
   adjacent: "Chưa có sản phẩm phù hợp. Bạn thử xem các danh mục gần đây:",
+  service: "Nhu cầu này là dịch vụ đặt vé — bạn đặt trực tiếp qua đối tác dưới đây nhé:",
 };
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -114,6 +145,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const intent: SearchIntent = await parseIntent(prompt);
+
+  // 0. Service needs (tickets/booking) have no product datafeed — refer to the
+  // merchant instead of mis-matching physical products. Only fires when at
+  // least one merchant for the type is configured; otherwise the product
+  // cascade below still runs (its no-match steps beat a dead end).
+  const services = serviceCards(intent);
+  if (services.length > 0) {
+    return NextResponse.json({
+      reply: REPLIES.service,
+      matchLevel: "service",
+      results: [],
+      services,
+    } satisfies ChatResponse);
+  }
 
   // D7 cascade — each step honestly labeled via matchLevel.
   // 1. Exact intent.
@@ -153,7 +198,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // 4. Suggest 1–2 adjacent categories with a small sample from each.
-  const categories = (await listCategories()).filter((c) => c !== intent.category).slice(0, 2);
+  // listCategories() returns feed slugs — compare against the mapped intent
+  // category, and show VN labels to the user (slugs are internal).
+  const intentSlug = categorySlug(intent.category);
+  const categories = (await listCategories()).filter((c) => c !== intentSlug).slice(0, 2);
   const samples: Candidate[] = [];
   for (const cat of categories) {
     const catHits = await hydrate(
@@ -165,6 +213,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     reply: REPLIES.adjacent,
     matchLevel: "adjacent",
     results: toCards(samples, body?.campaign),
-    adjacentCategories: categories,
+    adjacentCategories: categories.map(categoryLabel),
   } satisfies ChatResponse);
 }

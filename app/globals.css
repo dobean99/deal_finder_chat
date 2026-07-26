@@ -9,6 +9,21 @@
   --color-cream: #f1ece0; /* best-pick "NHIỀU ƯU ĐÃI" wrapper */
   --color-cream-label: #8a7a4f;
   --color-note: #8a6d1f; /* olive/amber fallback note in no-match reply */
+  /* Announcement-bar partner brands */
+  --color-highlands: #b01f24;
+  --color-tch: #e8752a;
+
+  --animate-announce-in: announce-in 0.4s ease both;
+  @keyframes announce-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

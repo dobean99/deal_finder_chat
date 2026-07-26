@@ -11,19 +11,15 @@
 //  - IP is salted-hashed before logging; no raw PII (D5).
 
 import { NextRequest, NextResponse } from "next/server";
-import { createHash, randomUUID } from "node:crypto";
+import { notFound } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { ATTRIBUTION_COOKIE, ATTRIBUTION_COOKIE_MAX_AGE_S } from "@/lib/config";
+import { hashIp } from "@/lib/tracking/ip";
 import { isWebviewUa } from "@/lib/tracking/webview";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function hashIp(ip: string): string {
-  return createHash("sha256")
-    .update(`${process.env.IP_HASH_SALT ?? ""}:${ip}`)
-    .digest("hex");
-}
 
 export async function GET(
   req: NextRequest,
@@ -32,7 +28,7 @@ export async function GET(
   const { id } = await ctx.params;
 
   const product = await prisma.product.findUnique({ where: { id } });
-  if (!product) return new NextResponse("Not found", { status: 404 });
+  if (!product) notFound(); // renders app/not-found.tsx with a 404 status
 
   const clickId = randomUUID();
   const ua = req.headers.get("user-agent") ?? "";

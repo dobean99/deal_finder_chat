@@ -5,7 +5,8 @@
 
 import Typesense, { Client } from "typesense";
 import type { SearchIntent, Candidate } from "@/lib/affiliate/ranking";
-import { MAX_RESULTS } from "@/lib/config";
+import { MAX_RESULTS, MIN_RESULTS } from "@/lib/config";
+import { categorySlug } from "@/lib/search/categories";
 
 const COLLECTION = "products";
 
@@ -80,6 +81,32 @@ export async function upsertProducts(docs: ProductDoc[]): Promise<void> {
   }
 }
 
+/** Diacritic-insensitive normalization, mirroring the index's locale-"vi"
+ * matching ("Ốp lưng" → "op lung"). */
+function normalizeVi(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    // strip combining marks (the class is the literal U+0300–U+036F range)
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d");
+}
+
+/**
+ * Token index where the query first matches in the name, or MAX_SAFE_INTEGER.
+ * Real products lead with the query term ("iPhone 15 Pro Max" → 0); listings
+ * that merely mention it bury it ("Ốp lưng dành cho iPhone" → 3).
+ */
+export function queryPosition(name: string, terms: string[]): number {
+  const words = terms.flatMap((t) => normalizeVi(t).split(/\s+/)).filter(Boolean);
+  if (words.length === 0) return Number.MAX_SAFE_INTEGER;
+  const tokens = normalizeVi(name).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  for (let i = 0; i < tokens.length; i++) {
+    if (words.some((w) => tokens[i].startsWith(w))) return i;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
 export interface SearchOptions {
   /** Drop the price ceiling (no-match cascade step 2). */
   ignorePriceMax?: boolean;
@@ -98,8 +125,13 @@ export async function search(intent: SearchIntent, opts: SearchOptions = {}): Pr
   const ts = getTypesense();
 
   const filters: string[] = [];
-  const category = opts.categoryOverride ?? intent.category;
-  if (opts.categoryOnly && category) filters.push(`category:=${JSON.stringify(category)}`);
+  // Parser categories are free-form VN ("điện thoại"); the index holds feed
+  // slugs ("phone_tablets") — always go through the mapping.
+  const slug = categorySlug(opts.categoryOverride ?? intent.category);
+  if (opts.categoryOnly) {
+    if (!slug) return []; // unmappable category — let the cascade move on
+    filters.push(`category:=${slug}`);
+  }
   if (intent.priceMin != null) filters.push(`price:>=${intent.priceMin}`);
   if (intent.priceMax != null && !opts.ignorePriceMax) filters.push(`price:<=${intent.priceMax}`);
   if (intent.mustHaveVoucher) filters.push("hasVoucher:=true");
@@ -108,16 +140,66 @@ export async function search(intent: SearchIntent, opts: SearchOptions = {}): Pr
     ? "*"
     : [intent.brand, ...intent.keywords].filter(Boolean).join(" ") || "*";
 
+  // Category boost (not filter): thousands of accessories carry a model name
+  // ("Ốp lưng iPhone …") and tie on text match, so without this the cheapest
+  // accessories fill the candidate pool before any actual phone/TV/etc. Docs
+  // in the intent's category sort first; half-empty category data can then
+  // only demote, never exclude.
+  const sortBy =
+    queryTerms === "*"
+      ? "price:asc"
+      : slug
+        ? `_eval(category:=${slug}):desc,_text_match:desc,price:asc`
+        : "_text_match:desc,price:asc";
+
   const res = await ts.collections<ProductDoc>(COLLECTION).documents().search({
     q: queryTerms,
     query_by: "name",
     num_typos: 2,
+    // Weight matches near the start of the name so the over-fetched pool holds
+    // actual products, not just the cheapest accessories mentioning the term.
+    prioritize_token_position: true,
     filter_by: filters.join(" && ") || undefined,
     per_page: opts.limit ?? MAX_RESULTS * 3, // over-fetch; rank() trims later
-    sort_by: queryTerms === "*" ? "price:asc" : "_text_match:desc,price:asc",
+    sort_by: sortBy,
   });
 
-  return (res.hits ?? []).map((h: { document: ProductDoc }) => {
+  let hits = res.hits ?? [];
+  // The boost orders in-category docs first, but rank() re-sorts by the
+  // composite score where cheapest-in-set wins — a 150k₫ case would still bury
+  // a 30M₫ phone. When the pool holds a full result set of in-category docs,
+  // drop the rest so priceScore compares like with like. Below MIN_RESULTS we
+  // keep everything: category data is sparse (most docs carry no category) and
+  // a thin filter would empty legitimate result sets.
+  if (slug && !opts.categoryOnly) {
+    const inCategory = hits.filter((h) => h.document.category === slug);
+    if (inCategory.length >= MIN_RESULTS) hits = inCategory;
+  }
+
+  // Exact-product gate: "iphone" must return iPhones, not the accessories that
+  // also mention it. Both match the text; the difference is where the term
+  // sits — real products lead with it, accessories bury it ("Ốp lưng dành cho
+  // iPhone"). Group hits by the query's token position in the name and keep
+  // the earliest groups that still fill a result set; rank() then compares
+  // price/voucher among like products only. All-tied groups (e.g. every name
+  // prefixed "Điện thoại …") drop nothing, and a typo'd query that never
+  // string-matches lands everything in one group — both degrade safely.
+  if (!opts.categoryOnly && queryTerms !== "*") {
+    const terms = [intent.brand, ...intent.keywords].filter((t): t is string => !!t);
+    const byPos = new Map<number, typeof hits>();
+    for (const h of hits) {
+      const pos = queryPosition(h.document.name, terms);
+      byPos.set(pos, [...(byPos.get(pos) ?? []), h]);
+    }
+    const kept: typeof hits = [];
+    for (const pos of [...byPos.keys()].sort((a, b) => a - b)) {
+      if (kept.length >= MIN_RESULTS) break;
+      kept.push(...(byPos.get(pos) ?? []));
+    }
+    hits = kept;
+  }
+
+  return hits.map((h: { document: ProductDoc }) => {
     const d = h.document;
     return {
       id: d.id,

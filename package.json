@@ -9,6 +9,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "eval:ranking": "tsx evals/ranking-smoke.ts",
+    "ingest:all": "tsx --env-file=.env scripts/ingest-all.ts",
+    "ingest:vouchers": "tsx --env-file=.env scripts/ingest-all.ts --vouchers-only",
+    "categorize": "tsx --env-file=.env scripts/categorize-products.ts",
     "test:e2e": "playwright test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"

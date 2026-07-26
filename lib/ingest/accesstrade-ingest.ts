@@ -294,6 +294,32 @@ export async function ingestTopSellers(): Promise<IngestResult> {
   return { job: "top-sellers", processed, skippedUnapproved: 0 };
 }
 
+/**
+ * CTR feedback loop: roll ClickEvent up into Product.clicks30d/completions30d
+ * (30-day window). Runs nightly from scripts/ingest-all.ts; rank() reads the
+ * counters at query time via hydrate(), so no Typesense re-sync is needed.
+ * Synthetic ids (banner:*, service:*) have no Product row and drop out of the
+ * join naturally.
+ */
+export async function aggregateEngagement(): Promise<IngestResult> {
+  await prisma.$executeRaw`
+    UPDATE "Product" SET "clicks30d" = 0, "completions30d" = 0
+    WHERE "clicks30d" <> 0 OR "completions30d" <> 0`;
+  const updated = await prisma.$executeRaw`
+    UPDATE "Product" p
+    SET "clicks30d" = s.clicks, "completions30d" = s.comps
+    FROM (
+      SELECT "productId",
+             count(*)::int          AS clicks,
+             count("completedAt")::int AS comps
+      FROM "ClickEvent"
+      WHERE "createdAt" >= now() - interval '30 days'
+      GROUP BY "productId"
+    ) s
+    WHERE p.id = s."productId"`;
+  return { job: "engagement", processed: updated, skippedUnapproved: 0 };
+}
+
 /** Re-sync hasVoucher flags in Typesense from current Postgres state. */
 async function resyncHasVoucher(): Promise<void> {
   await resyncIndexFromDb();

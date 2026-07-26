@@ -25,6 +25,8 @@ model Product {
   affLink       String // AccessTrade deeplink (never sent to client raw)
   salesRank     Int? // from top_products; feeds quality proxy
   rating        Float? // reserved; backfilled from platform APIs later
+  clicks30d      Int @default(0) // our own CTR signal, aggregated nightly from ClickEvent
+  completions30d Int @default(0) // clicks that fired the completion beacon (stronger signal)
   updatedAt     DateTime  @updatedAt
   vouchers      Voucher[]
 

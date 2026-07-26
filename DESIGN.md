@@ -27,7 +27,7 @@ Neutral, near-monochrome shell so marketplace color reads instantly.
 | Ink-hover | `#2A2D34` | Button/CTA hover |
 | Text primary | `#20242B` | Card names, body |
 | Text secondary | `#5B616B` | Supporting copy |
-| Text muted | `#8A9098` / `#9298A0` | Meta, disclosure, placeholders |
+| Text muted | `#8A9098` / `#9298A0` | Meta, placeholders |
 | Surface (app) | `#F4F5F7` | Conversation background |
 | Surface (card) | `#FFFFFF` | Cards, assistant bubbles |
 | Page (behind device) | `#EBEDF0` | Canvas |
@@ -64,7 +64,6 @@ No gradients as decoration (only a faint white sheen on the logo and placeholder
 | Price | 18px / 800 |
 | Original (strikethrough) | 13px / 500, `#A0A6AD` |
 | Chips, meta | 11–12.5px / 600 |
-| Disclosure | 11.5px / 400, `#9298A0` |
 
 Sentence case everywhere. Vietnamese, conversational, plain verbs, no filler. Buttons say exactly what happens ("Xem deal trên Shopee", "Thử lại", "Đồng ý").
 
@@ -91,7 +90,6 @@ Sentence case everywhere. Vietnamese, conversational, plain verbs, no filler. Bu
 - **Card row** — horizontal scroll-snap on mobile; responsive grid on desktop.
 - **Composer** — pinned bottom; 48px pill input + 48px round send; 3–4 tappable example prompts above for cold-start.
 - **Consent notice** — dismissable ink card (VN PDPL), two actions.
-- **Affiliate disclosure** — muted line beneath every result set. Always present.
 
 ---
 
@@ -99,7 +97,7 @@ Sentence case everywhere. Vietnamese, conversational, plain verbs, no filler. Bu
 
 - **Empty** — logo + welcome line + example prompts. No dead air.
 - **Loading** — skeleton cards (shimmer), never a spinner.
-- **Result** — intro line + ranked cards + disclosure.
+- **Result** — intro line + ranked cards.
 - **No exact match** — broadened results with an honest amber label ("Không có… — đây là gần nhất"). Never a dead-end, never an apology.
 - **Error** — plain, actionable, with "Thử lại". Keeps the user's need.
 

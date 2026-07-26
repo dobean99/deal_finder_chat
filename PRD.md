@@ -34,7 +34,7 @@ These come from how AccessTrade actually works and must be respected by the impl
 
 ## 4. Scope
 
-**In (v1):** single-turn chat; VN-language intent parsing; Typesense-backed search over ingested products; composite ranking; result cards with price + voucher chips + platform badge; tracked redirect **with webview detection + native deeplink preference and redirect-completion instrumentation (F10)**; durable `clickId` groundwork for reconciliation (F11); affiliate disclosure (§6 Compliance); scheduled ingestion (products, vouchers, top-sellers); basic click logging.
+**In (v1):** single-turn chat; VN-language intent parsing; Typesense-backed search over ingested products; composite ranking; result cards with price + voucher chips + platform badge; tracked redirect **with webview detection + native deeplink preference and redirect-completion instrumentation (F10)**; durable `clickId` groundwork for reconciliation (F11); scheduled ingestion (products, vouchers, top-sellers); basic click logging.
 
 **v1.5 (scheduled, not deferred indefinitely):** conversion-webhook reconciliation consumer that resolves the F11 `clickId` join into paid/rejected outcomes — this is what turns the estimated revenue metric into a real one.
 
@@ -65,7 +65,7 @@ These come from how AccessTrade actually works and must be respected by the impl
 - **Rate-limit safety:** ingestion throttled to stay under 30 req/min; 400 "rate limit" responses retried with backoff.
 - **Attribution integrity:** no raw `aff_link` in client HTML; outbound CTAs use a plain `<a>` (never `next/link`) to avoid prefetch inflating clicks; redirect route is `runtime='nodejs'` + `force-dynamic`. Redirect completion is instrumented so webview/deeplink failure (R1) is observable, and click-attribution numbers are reported as an estimate until reconciliation (R2) lands.
 - **Security:** redirect target resolved from server store by id only (no open redirect); IP hashed before logging; secrets in env.
-- **Compliance:** an affiliate disclosure is shown with every result set — commission relationship and no-extra-cost-to-user, in the interface voice. Treat recommendations as incentivized traffic under each platform's terms; keep AI-content labeling in mind for any generated copy surfaced to users.
+- **Compliance:** treat recommendations as incentivized traffic under each platform's terms; keep AI-content labeling in mind for any generated copy surfaced to users.
 - **Accessibility:** keyboard-navigable results, visible focus, reduced-motion respected, mobile-first.
 
 ---
@@ -177,7 +177,7 @@ model ClickEvent {
 2. **Index & search:** Typesense sync + faceted query; verify diacritic/typo tolerance on VN queries.
 3. **Chat loop:** intent parser (Claude API, strict JSON) → search → rank → cards → `/go` **with webview detection + native deeplink preference + completion instrumentation (F10)**.
 4. **Vouchers & quality:** join offers, apply saturating voucher score, wire top-sellers proxy.
-5. **Polish:** disclosure, empty/error states, mobile, accessibility. Expand to Lazada + TikTok Shop feeds.
+5. **Polish:** empty/error states, mobile, accessibility. Expand to Lazada + TikTok Shop feeds.
 6. **v1.5:** conversion-webhook reconciliation (F11) — turn estimated revenue into real revenue.
 7. **Post-v1:** real ratings via platform APIs; weight tuning from click-through.
 

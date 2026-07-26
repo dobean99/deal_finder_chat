@@ -31,7 +31,7 @@ test.describe("chat flow", () => {
     await page.reload();
   });
 
-  test("suggestion chip returns product cards with disclosure and working /go redirect", async ({
+  test("suggestion chip returns product cards and working /go redirect", async ({
     page,
   }) => {
     await page.getByRole("button", { name: "Tai nghe chống ồn dưới 1 triệu" }).click();
@@ -44,8 +44,6 @@ test.describe("chat flow", () => {
     // Wait for the async reply: either product cards or the no-match note.
     const cta = page.getByRole("link", { name: /Xem deal trên/ }).first();
     await expect(cta).toBeVisible({ timeout: 20_000 });
-
-    await expect(page.getByText(/Liên kết tiếp thị/)).toBeVisible();
 
     // Best pick styling, when an exact match leads the row.
     const bestPick = page.getByText("Đáng mua nhất");

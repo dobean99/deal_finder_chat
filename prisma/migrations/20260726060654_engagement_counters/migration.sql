@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN     "clicks30d" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "completions30d" INTEGER NOT NULL DEFAULT 0;

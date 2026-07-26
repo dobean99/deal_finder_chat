@@ -71,6 +71,9 @@ export function ProductCard({
             </span>
           )}
         </p>
+        {/* Feed prices lag the merchant's live page (R3: no unverifiable price
+            claims) — frame the number as a reference, not a promise. */}
+        <p className="-mt-1 text-xs text-neutral-400">Giá tham khảo — có thể thay đổi trên sàn</p>
         {card.vouchers.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {card.vouchers.map((v, i) => (
