@@ -16,7 +16,7 @@ import { getAccessTrade, type AtDatafeedItem } from "@/lib/affiliate/accesstrade
 import { upsertProducts, type ProductDoc } from "@/lib/search/typesense";
 
 const PAGE_LIMIT = 100;
-const MAX_API_PAGES = 150; // safety bound for API-paged pulls (Shopee datafeed is ~12.9k rows ≈ 129 pages)
+const MAX_API_PAGES = 600; // safety bound for API-paged pulls (largest live feed: Tiki ~55.5k rows ≈ 555 pages)
 
 export interface IngestResult {
   job: string;
