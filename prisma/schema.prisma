@@ -48,6 +48,19 @@ model Voucher {
   @@index([merchant, endTime])
 }
 
+// "Tạo link" short links: /go/l/<id> redirects to the AccessTrade deep link
+// for targetUrl. Only the pasted product URL is stored — the deep link is
+// composed at redirect time from env (same fail-closed invariant as /go/b,
+// /go/s), so campaign/publisher changes apply to already-shared links.
+model SharedLink {
+  id        String   @id // short base62 slug, generated server-side
+  targetUrl String
+  merchant  String // must match a DEEPLINK_MERCHANTS entry
+  createdAt DateTime @default(now())
+
+  @@unique([merchant, targetUrl])
+}
+
 model ClickEvent {
   id          String    @id @default(cuid())
   clickId     String    @unique // cookie + query param ↔ conversion join key (F11)

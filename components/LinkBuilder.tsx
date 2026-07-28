@@ -1,8 +1,8 @@
 "use client";
 
 // "Tạo link" tab (app/public/screens mockup 2): paste a Shopee / TikTok Shop /
-// Lazada product URL, get back a shareable AccessTrade deep link from
-// POST /api/link. The mockup only shows the empty state (button disabled);
+// Lazada product URL, get back a short shareable /go/l link (falling back to
+// the AccessTrade deep link) from POST /api/link. The mockup only shows the empty state (button disabled);
 // success (link card + copy + open-in-new-tab) and error states follow the
 // chat tab's idiom.
 
@@ -49,7 +49,9 @@ export function LinkBuilder() {
     }
   }
 
-  const shareLink = result ? result.shortLink ?? result.affLink : null;
+  const shareLink = result
+    ? result.shareLink ?? result.shortLink ?? result.affLink
+    : null;
 
   async function copy() {
     if (!shareLink) return;
@@ -136,7 +138,7 @@ export function LinkBuilder() {
           <p className="mt-2 break-all font-mono text-base font-semibold text-neutral-800">
             {shareLink}
           </p>
-          {result.shortLink && (
+          {(result.shareLink || result.shortLink) && (
             <p className="mt-2 break-all font-mono text-xs text-neutral-400">
               {result.affLink}
             </p>

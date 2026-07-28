@@ -13,6 +13,8 @@
 // instead of failing the request.
 
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
+import { prisma } from "@/lib/db";
 import { DEEPLINK_MERCHANTS } from "@/lib/config";
 
 export const runtime = "nodejs";
@@ -25,8 +27,56 @@ export interface LinkResponse {
   affLink: string;
   /** shorten.asia link from AccessTrade; absent when the short-link API fails. */
   shortLink?: string;
+  /** Short link on our own domain (/go/l/<slug>); absent when the DB write fails. */
+  shareLink?: string;
   merchant: string;
   label: string;
+}
+
+const SLUG_ALPHABET =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const SLUG_LENGTH = 7;
+const MAX_TARGET_URL_CHARS = 2000;
+
+function newSlug(): string {
+  const bytes = randomBytes(SLUG_LENGTH);
+  let slug = "";
+  for (const b of bytes) slug += SLUG_ALPHABET[b % SLUG_ALPHABET.length];
+  return slug;
+}
+
+/**
+ * Best-effort /go/l slug for this URL — reuses the existing row when the same
+ * URL was shared before, otherwise creates one (retrying on the rare slug
+ * collision). Returns null on DB failure: the response then degrades to the
+ * deep link, same philosophy as createShortLink.
+ */
+async function upsertSharedLink(
+  merchant: string,
+  targetUrl: string,
+): Promise<string | null> {
+  const byUrl = { merchant_targetUrl: { merchant, targetUrl } };
+  try {
+    const existing = await prisma.sharedLink.findUnique({ where: byUrl });
+    if (existing) return existing.id;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const created = await prisma.sharedLink.create({
+          data: { id: newSlug(), merchant, targetUrl },
+        });
+        return created.id;
+      } catch {
+        // Unique violation: either a concurrent create of the same URL
+        // (re-read finds it) or a slug collision (loop generates a new one).
+        const concurrent = await prisma.sharedLink.findUnique({ where: byUrl });
+        if (concurrent) return concurrent.id;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error("[api/link] SharedLink upsert failed", err);
+    return null;
+  }
 }
 
 interface AtProductLinkResponse {
@@ -92,6 +142,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Never embed pasted credentials into a shareable link.
   target.username = "";
   target.password = "";
+  if (target.toString().length > MAX_TARGET_URL_CHARS) {
+    return NextResponse.json({ error: "invalid_url" }, { status: 422 });
+  }
 
   const merchant = matchMerchant(target.hostname);
   if (!merchant) {
@@ -104,12 +157,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "not_configured" }, { status: 503 });
   }
 
-  const composed = `https://go.isclix.com/deep_link/${publisherId}/${campaignId}?url=${encodeURIComponent(target.toString())}`;
-  const short = await createShortLink(campaignId, target.toString());
+  const targetUrl = target.toString();
+  const composed = `https://go.isclix.com/deep_link/${publisherId}/${campaignId}?url=${encodeURIComponent(targetUrl)}`;
+  const [short, slug] = await Promise.all([
+    createShortLink(campaignId, targetUrl),
+    upsertSharedLink(merchant.merchant, targetUrl),
+  ]);
   return NextResponse.json({
     // Prefer AccessTrade's own aff_link (it carries their sub-id tagging).
     affLink: short.affLink ?? composed,
     shortLink: short.shortLink,
+    shareLink: slug ? `${req.nextUrl.origin}/go/l/${slug}` : undefined,
     merchant: merchant.merchant,
     label: merchant.label,
   } satisfies LinkResponse);
