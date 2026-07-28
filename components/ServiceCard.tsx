@@ -16,7 +16,7 @@ export function ServiceCard({
 }) {
   return (
     <div className="flex w-64 shrink-0 flex-col gap-2 rounded-2xl bg-white p-4 shadow-sm sm:w-auto">
-      <p className="text-lg font-bold text-neutral-900">{card.label}</p>
+      <p className="text-base font-bold text-neutral-900 sm:text-lg">{card.label}</p>
       <p className="flex-1 text-sm text-neutral-500">{card.tagline}</p>
       <a
         href={card.href}

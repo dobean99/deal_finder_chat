@@ -57,13 +57,13 @@ export function ProductCard({
         </span>
       </div>
       <div className="flex flex-1 flex-col gap-2 p-3">
-        <p className="line-clamp-2 text-base font-bold leading-snug text-neutral-900">{card.name}</p>
+        <p className="line-clamp-2 text-sm font-bold leading-snug text-neutral-900 sm:text-base">{card.name}</p>
         {card.popular && (
           <span className="self-start rounded-lg bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
             Phổ biến
           </span>
         )}
-        <p className="text-2xl font-extrabold tracking-tight text-neutral-900">
+        <p className="text-xl font-extrabold tracking-tight text-neutral-900 sm:text-2xl">
           {formatVnd(card.price)}
           {card.originalPrice != null && card.originalPrice > card.price && (
             <span className="ml-2 text-sm font-normal text-neutral-400 line-through">

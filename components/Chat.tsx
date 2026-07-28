@@ -186,12 +186,12 @@ export function Chat({
               <div className="pt-16 sm:mx-auto sm:max-w-lg sm:pt-24 sm:text-center">
                 {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset */}
                 <img src="/logos/logo-mark.png" alt="" className="h-20 w-20 rounded-3xl sm:mx-auto" />
-                <h2 className="mt-6 text-4xl font-extrabold tracking-tight sm:text-5xl">Bạn cần mua gì?</h2>
-                <p className="mt-4 max-w-md text-lg text-neutral-500 sm:mx-auto">
+                <h2 className="mt-6 text-3xl font-extrabold tracking-tight sm:text-5xl">Bạn cần mua gì?</h2>
+                <p className="mt-4 max-w-md text-base text-neutral-500 sm:mx-auto sm:text-lg">
                   Nhắn nhu cầu của bạn — mình tìm và xếp hạng vài lựa chọn tốt nhất
                   kèm mã giảm, so giá qua Shopee, TikTok Shop và Lazada.
                 </p>
-                <p className="mt-6 text-base font-semibold text-neutral-400">
+                <p className="mt-6 text-sm font-semibold text-neutral-400 sm:text-base">
                   Thử một gợi ý bên dưới ↓
                 </p>
               </div>
@@ -200,13 +200,13 @@ export function Chat({
             {turns.map((turn, i) =>
               turn.role === "user" ? (
                 <div key={i} className="flex justify-end">
-                  <div className="max-w-[80%] rounded-3xl bg-ink px-5 py-3 text-base font-semibold text-white sm:max-w-[60%]">
+                  <div className="max-w-[80%] rounded-3xl bg-ink px-5 py-3 text-sm font-semibold text-white sm:max-w-[60%] sm:text-base">
                     {turn.text}
                   </div>
                 </div>
               ) : (
                 <div key={i} className="space-y-3">
-                  <div className="max-w-[85%] rounded-3xl bg-white px-5 py-3 text-base text-neutral-800 shadow-sm sm:max-w-[70%]">
+                  <div className="max-w-[85%] rounded-3xl bg-white px-5 py-3 text-sm text-neutral-800 shadow-sm sm:max-w-[70%] sm:text-base">
                     {turn.text}
                     {turn.response && turn.response.results.length === 0 && !turn.response.services?.length && (
                       <p className="mt-1 font-bold text-note">
@@ -268,13 +268,13 @@ export function Chat({
                     ⚠
                   </span>
                   <div>
-                    <p className="text-base font-bold">Chưa tải được kết quả</p>
-                    <p className="text-base text-neutral-500">{error}</p>
+                    <p className="text-sm font-bold sm:text-base">Chưa tải được kết quả</p>
+                    <p className="text-sm text-neutral-500 sm:text-base">{error}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => void send(lastPromptRef.current, true)}
-                  className="min-h-11 rounded-2xl bg-ink px-6 text-base font-bold text-white focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+                  className="min-h-11 rounded-2xl bg-ink px-6 text-sm font-bold text-white sm:text-base focus:outline-2 focus:outline-offset-2 focus:outline-ink"
                 >
                   Thử lại
                 </button>

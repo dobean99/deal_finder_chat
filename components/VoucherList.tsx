@@ -152,15 +152,15 @@ export function VoucherList({ onCtaClick }: { onCtaClick?: () => void }) {
               ⚠
             </span>
             <div>
-              <p className="text-base font-bold">Chưa tải được voucher</p>
-              <p className="text-base text-neutral-500">
+              <p className="text-sm font-bold sm:text-base">Chưa tải được voucher</p>
+              <p className="text-sm text-neutral-500 sm:text-base">
                 Kết nối đang trục trặc — thử lại nhé.
               </p>
             </div>
           </div>
           <button
             onClick={() => void show(merchant)}
-            className="mt-3 min-h-11 rounded-2xl bg-ink px-6 text-base font-bold text-white focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+            className="mt-3 min-h-11 rounded-2xl bg-ink px-6 text-sm font-bold text-white sm:text-base focus:outline-2 focus:outline-offset-2 focus:outline-ink"
           >
             Thử lại
           </button>
@@ -168,7 +168,7 @@ export function VoucherList({ onCtaClick }: { onCtaClick?: () => void }) {
       )}
 
       {!loading && !error && vouchers.length === 0 && (
-        <div className="pt-16 text-center text-lg text-neutral-500">
+        <div className="pt-16 text-center text-base text-neutral-500 sm:text-lg">
           Chưa có voucher nào đang chạy — quay lại sau nhé.
         </div>
       )}
@@ -187,17 +187,17 @@ export function VoucherList({ onCtaClick }: { onCtaClick?: () => void }) {
                       {merchantLabel(v.merchant)}
                     </span>
                     {v.shop && (
-                      <span className="truncate text-sm font-semibold text-neutral-400">
+                      <span className="truncate text-xs font-semibold text-neutral-400 sm:text-sm">
                         {v.shop}
                       </span>
                     )}
                   </div>
-                  <p className="mt-3 flex-1 text-base font-semibold text-neutral-800">
+                  <p className="mt-3 flex-1 text-sm font-semibold text-neutral-800 sm:text-base">
                     {v.title}
                   </p>
                   {end && (
                     <p
-                      className={`mt-2 text-sm font-semibold ${end === "Hết hạn hôm nay" ? "text-note" : "text-neutral-400"}`}
+                      className={`mt-2 text-xs font-semibold sm:text-sm ${end === "Hết hạn hôm nay" ? "text-note" : "text-neutral-400"}`}
                     >
                       {end}
                     </p>
@@ -234,7 +234,7 @@ export function VoucherList({ onCtaClick }: { onCtaClick?: () => void }) {
             <button
               onClick={() => void showMore()}
               disabled={loadingMore}
-              className="mt-4 flex min-h-12 w-full items-center justify-center rounded-2xl border border-neutral-200 bg-white text-base font-bold text-neutral-800 disabled:text-neutral-400 focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+              className="mt-4 flex min-h-12 w-full items-center justify-center rounded-2xl border border-neutral-200 bg-white text-sm font-bold text-neutral-800 sm:text-base disabled:text-neutral-400 focus:outline-2 focus:outline-offset-2 focus:outline-ink"
             >
               {loadingMore
                 ? "Đang tải…"

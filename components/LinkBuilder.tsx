@@ -66,10 +66,10 @@ export function LinkBuilder() {
 
   return (
     <div className="pt-8 sm:mx-auto sm:max-w-lg">
-      <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+      <h2 className="text-2xl font-extrabold tracking-tight sm:text-4xl">
         Tạo link
       </h2>
-      <p className="mt-3 text-lg text-neutral-500">
+      <p className="mt-3 text-base text-neutral-500 sm:text-lg">
         Ủng hộ mình bằng cách tạo link và mua hàng bằng link bên dưới nhé!
       </p>
 
@@ -80,7 +80,7 @@ export function LinkBuilder() {
         }}
         className="mt-8"
       >
-        <label htmlFor="link-input" className="block text-base font-bold text-neutral-700">
+        <label htmlFor="link-input" className="block text-sm font-bold text-neutral-700 sm:text-base">
           Link sản phẩm
         </label>
         <textarea
@@ -94,7 +94,7 @@ export function LinkBuilder() {
         <button
           type="submit"
           disabled={loading || url.trim() === ""}
-          className="mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-3xl bg-ink text-lg font-bold text-white disabled:bg-neutral-200 disabled:text-neutral-400 focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+          className="mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-3xl bg-ink text-base font-bold text-white sm:text-lg disabled:bg-neutral-200 disabled:text-neutral-400 focus:outline-2 focus:outline-offset-2 focus:outline-ink"
         >
           <svg
             viewBox="0 0 24 24"
@@ -123,8 +123,8 @@ export function LinkBuilder() {
               ⚠
             </span>
             <div>
-              <p className="text-base font-bold">Chưa tạo được link</p>
-              <p className="text-base text-neutral-500">{error}</p>
+              <p className="text-sm font-bold sm:text-base">Chưa tạo được link</p>
+              <p className="text-sm text-neutral-500 sm:text-base">{error}</p>
             </div>
           </div>
         </div>
@@ -135,7 +135,7 @@ export function LinkBuilder() {
           <p className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
             Link affiliate · {result.label}
           </p>
-          <p className="mt-2 break-all font-mono text-base font-semibold text-neutral-800">
+          <p className="mt-2 break-all font-mono text-sm font-semibold text-neutral-800 sm:text-base">
             {shareLink}
           </p>
           {(result.shareLink || result.shortLink) && (
@@ -146,7 +146,7 @@ export function LinkBuilder() {
           <div className="mt-4 flex gap-3">
             <button
               onClick={() => void copy()}
-              className="min-h-11 flex-1 rounded-2xl bg-ink px-6 text-base font-bold text-white focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+              className="min-h-11 flex-1 rounded-2xl bg-ink px-6 text-sm font-bold text-white sm:text-base focus:outline-2 focus:outline-offset-2 focus:outline-ink"
             >
               {copied ? "Đã sao chép ✓" : "Sao chép"}
             </button>
@@ -154,7 +154,7 @@ export function LinkBuilder() {
               href={shareLink ?? result.affLink}
               target="_blank"
               rel="nofollow sponsored noopener"
-              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 px-6 text-base font-bold text-neutral-800 focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 px-6 text-sm font-bold text-neutral-800 sm:text-base focus:outline-2 focus:outline-offset-2 focus:outline-ink"
             >
               Mở link
               <svg
@@ -175,7 +175,7 @@ export function LinkBuilder() {
         </div>
       )}
 
-      <p className="mt-8 text-base text-neutral-400">
+      <p className="mt-8 text-sm text-neutral-400 sm:text-base">
         Link được tạo qua mạng affiliate AccessTrade. Khi có người mua qua link
         này, mình nhận hoa hồng — người mua không trả thêm chi phí.
       </p>

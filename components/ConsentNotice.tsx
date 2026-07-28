@@ -54,7 +54,7 @@ export function ConsentNotice() {
           <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
           <circle cx="12" cy="15" r="1" fill="currentColor" stroke="none" />
         </svg>
-        <p className="text-base">
+        <p className="text-sm sm:text-base">
           Mình dùng cookie để đo lượt bấm và giữ liên kết tiếp thị hoạt động,
           theo PDPL. Không lưu thông tin nhận dạng của bạn.
         </p>
@@ -62,13 +62,13 @@ export function ConsentNotice() {
       <div className="mt-4 flex gap-3">
         <button
           onClick={() => record("accepted")}
-          className="min-h-12 flex-1 rounded-2xl bg-white px-4 text-base font-bold text-ink focus:outline-2 focus:outline-offset-2 focus:outline-white"
+          className="min-h-12 flex-1 rounded-2xl bg-white px-4 text-sm font-bold text-ink sm:text-base focus:outline-2 focus:outline-offset-2 focus:outline-white"
         >
           Đồng ý
         </button>
         <button
           onClick={() => record("dismissed")}
-          className="min-h-12 shrink-0 whitespace-nowrap rounded-2xl border border-neutral-600 px-4 text-base font-bold text-white focus:outline-2 focus:outline-offset-2 focus:outline-white"
+          className="min-h-12 shrink-0 whitespace-nowrap rounded-2xl border border-neutral-600 px-4 text-sm font-bold text-white sm:text-base focus:outline-2 focus:outline-offset-2 focus:outline-white"
         >
           Chỉ cookie cần thiết
         </button>
