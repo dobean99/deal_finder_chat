@@ -110,3 +110,23 @@ test.describe("service referral cards", () => {
     expect(res.status()).toBe(404);
   });
 });
+
+test.describe("marketplace search handoff", () => {
+  test("/go/m/shopee 302s to deep-linked marketplace search", async ({ page }) => {
+    const res = await page.request.get("/go/m/shopee?q=gi%C3%A0y%20adidas", {
+      maxRedirects: 0,
+    });
+    expect(res.status()).toBe(302);
+    const location = res.headers()["location"] ?? "";
+    expect(location).toMatch(/^https:\/\/go\.isclix\.com\/deep_link\//);
+    expect(decodeURIComponent(location)).toContain("shopee.vn/search");
+    expect(location).toContain("dfclid=");
+  });
+
+  test("/go/m fails closed without query or on unknown/unconfigured slugs", async ({ page }) => {
+    for (const path of ["/go/m/shopee", "/go/m/amazon?q=x", "/go/m/lazada?q=x"]) {
+      const res = await page.request.get(path, { maxRedirects: 0 });
+      expect(res.status(), path).toBe(404);
+    }
+  });
+});

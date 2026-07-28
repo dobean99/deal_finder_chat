@@ -48,8 +48,22 @@ function LoadingBar() {
   return <div className="h-6 w-56 animate-pulse rounded-full bg-neutral-200" aria-label="Đang tìm deal" />;
 }
 
-export function Chat({ banners = [] }: { banners?: BannerItem[] }) {
-  const [tab, setTab] = useState<"chat" | "link">("chat");
+export function Chat({
+  banners = [],
+  initialTab = "chat",
+}: {
+  banners?: BannerItem[];
+  /** "link" when rendered from /sharelink — the tab's shareable URL. */
+  initialTab?: "chat" | "link";
+}) {
+  const [tab, setTab] = useState<"chat" | "link">(initialTab);
+
+  function switchTab(key: "chat" | "link") {
+    setTab(key);
+    // Keep the URL shareable per tab (/ ↔ /sharelink) without a server
+    // round-trip; Next syncs usePathname with native replaceState.
+    window.history.replaceState(null, "", key === "link" ? "/sharelink" : "/");
+  }
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -119,7 +133,7 @@ export function Chat({ banners = [] }: { banners?: BannerItem[] }) {
             key={key}
             role="tab"
             aria-selected={tab === key}
-            onClick={() => setTab(key)}
+            onClick={() => switchTab(key)}
             className={`flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl text-lg font-bold focus:outline-2 focus:outline-offset-2 focus:outline-ink ${tab === key
                 ? "bg-ink text-white"
                 : "border border-neutral-200 bg-white text-neutral-500"
@@ -179,6 +193,26 @@ export function Chat({ banners = [] }: { banners?: BannerItem[] }) {
                       </p>
                     )}
                   </div>
+                  {turn.response && (turn.response.searchLinks?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {turn.response.searchLinks!.map((link) => (
+                        <a
+                          key={link.merchant}
+                          href={link.href}
+                          target="_blank"
+                          rel="nofollow sponsored noopener"
+                          onClick={fireCompletionBeacon}
+                          className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-4 text-sm font-bold text-neutral-800 focus:outline-2 focus:outline-offset-2 focus:outline-ink"
+                        >
+                          <span aria-hidden>🔍</span>
+                          <span className="max-w-56 truncate">
+                            Tìm &ldquo;{link.query}&rdquo; trên {link.label}
+                          </span>
+                          <span className="shrink-0" aria-hidden>↗</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {turn.response && (turn.response.services?.length ?? 0) > 0 && (
                     <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 md:grid-cols-3">
                       {turn.response.services!.map((card) => (

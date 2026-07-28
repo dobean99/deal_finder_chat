@@ -157,6 +157,33 @@ export const SERVICE_MERCHANTS: readonly {
 
 export type ServiceMerchant = (typeof SERVICE_MERCHANTS)[number];
 
+/**
+ * Marketplace search handoff: the AccessTrade datafeeds are curated slices
+ * (Shopee ≈ 13k rows vs the marketplace's millions), so when the catalog
+ * can't serve a query the chat offers a tracked deep link to the merchant's
+ * own search results — commission attribution intact. Reuses the deep-link
+ * campaign env vars; a merchant whose var is unset never renders and
+ * /go/m/<slug> 404s (fails closed, same as DEEPLINK_MERCHANTS).
+ */
+export const MARKETPLACE_SEARCH = [
+  {
+    slug: "shopee",
+    merchant: "shopee",
+    label: "Shopee",
+    envVar: "DEEPLINK_CAMPAIGN_SHOPEE",
+    searchUrl: "https://shopee.vn/search?keyword={q}",
+  },
+  {
+    slug: "lazada",
+    merchant: "lazada",
+    label: "Lazada",
+    envVar: "DEEPLINK_CAMPAIGN_LAZADA",
+    searchUrl: "https://www.lazada.vn/catalog/?q={q}",
+  },
+] as const;
+
+export type MarketplaceSearch = (typeof MARKETPLACE_SEARCH)[number];
+
 export function env(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`Missing required env var: ${name}`);

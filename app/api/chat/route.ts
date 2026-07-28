@@ -6,11 +6,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { parseIntent } from "@/lib/intent/parse";
-import { search, listCategories } from "@/lib/search/typesense";
+import { search, listCategories, buildQueryTerms } from "@/lib/search/typesense";
 import { categorySlug, categoryLabel } from "@/lib/search/categories";
 import { rank, type Candidate, type SearchIntent } from "@/lib/affiliate/ranking";
 import { prisma } from "@/lib/db";
-import { MAX_RESULTS, SERVICE_MERCHANTS } from "@/lib/config";
+import { MAX_RESULTS, SERVICE_MERCHANTS, MARKETPLACE_SEARCH } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +52,24 @@ export interface ChatResponse {
   results: ResultCard[];
   adjacentCategories?: string[];
   services?: ServiceCard[];
+  /** Tracked handoffs to marketplace search results — attached when the
+   * catalog couldn't serve the query exactly (the AccessTrade feeds are thin
+   * slices of the real marketplaces). */
+  searchLinks?: { label: string; merchant: string; query: string; href: string }[];
+}
+
+/** Marketplace search handoffs for the query (configured merchants only). */
+function searchLinks(intent: SearchIntent): ChatResponse["searchLinks"] {
+  if (!process.env.ACCESSTRADE_PUBLISHER_ID) return undefined;
+  const q = buildQueryTerms(intent, false);
+  if (q === "*") return undefined;
+  const links = MARKETPLACE_SEARCH.filter((m) => process.env[m.envVar]).map((m) => ({
+    label: m.label,
+    merchant: m.merchant,
+    query: q,
+    href: `/go/m/${m.slug}?q=${encodeURIComponent(q)}`,
+  }));
+  return links.length > 0 ? links : undefined;
 }
 
 /** Configured referral merchants for a service intent (fails closed per
@@ -185,6 +203,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         reply: REPLIES["price-relaxed"],
         matchLevel: "price-relaxed",
+      searchLinks: searchLinks(intent),
         results: toCards(hits, body?.campaign),
       } satisfies ChatResponse);
     }
@@ -199,6 +218,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         reply: REPLIES["brand-relaxed"],
         matchLevel: "brand-relaxed",
+      searchLinks: searchLinks(intent),
         results: toCards(hits, body?.campaign),
       } satisfies ChatResponse);
     }
@@ -213,6 +233,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         reply: REPLIES.category,
         matchLevel: "category",
+      searchLinks: searchLinks(intent),
         results: toCards(hits, body?.campaign),
       } satisfies ChatResponse);
     }
@@ -233,6 +254,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     reply: REPLIES.adjacent,
     matchLevel: "adjacent",
+      searchLinks: searchLinks(intent),
     results: toCards(samples, body?.campaign),
     adjacentCategories: categories.map(categoryLabel),
   } satisfies ChatResponse);
