@@ -15,7 +15,13 @@ import { MAX_RESULTS, SERVICE_MERCHANTS } from "@/lib/config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export type MatchLevel = "exact" | "price-relaxed" | "category" | "adjacent" | "service";
+export type MatchLevel =
+  | "exact"
+  | "price-relaxed"
+  | "brand-relaxed"
+  | "category"
+  | "adjacent"
+  | "service";
 
 /** Referral card for service needs (tickets/booking) — no product datafeed
  * exists for these merchants, so the chat links to them directly (tracked). */
@@ -132,6 +138,7 @@ function toCards(candidates: Candidate[], campaign?: string): ResultCard[] {
 const REPLIES: Record<MatchLevel, string> = {
   exact: "Đây là vài lựa chọn tốt trong các sản phẩm tìm thấy:",
   "price-relaxed": "Không có đúng tầm giá đó — đây là những lựa chọn gần nhất:",
+  "brand-relaxed": "Chưa có hàng của thương hiệu đó — đây là sản phẩm tương tự từ hãng khác:",
   category: "Không tìm thấy đúng sản phẩm — đây là các lựa chọn cùng danh mục:",
   adjacent: "Chưa có sản phẩm phù hợp. Bạn thử xem các danh mục gần đây:",
   service: "Nhu cầu này là dịch vụ đặt vé — bạn đặt trực tiếp qua đối tác dưới đây nhé:",
@@ -183,7 +190,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // 3. Widen to category.
+  // 3. Relax the brand: an unstocked brand ("CeraVe") must not dead-end into
+  // category junk — same product type from other brands, honestly labeled.
+  // Original price bounds still apply; they express budget, not preference.
+  if (intent.brand) {
+    hits = await hydrate(await search(intent, { ignoreBrand: true }));
+    if (hits.length > 0) {
+      return NextResponse.json({
+        reply: REPLIES["brand-relaxed"],
+        matchLevel: "brand-relaxed",
+        results: toCards(hits, body?.campaign),
+      } satisfies ChatResponse);
+    }
+  }
+
+  // 4. Widen to category.
   if (intent.category) {
     hits = await hydrate(
       await search(intent, { categoryOnly: true, ignorePriceMax: true }),
@@ -197,7 +218,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // 4. Suggest 1–2 adjacent categories with a small sample from each.
+  // 5. Suggest 1–2 adjacent categories with a small sample from each.
   // listCategories() returns feed slugs — compare against the mapped intent
   // category, and show VN labels to the user (slugs are internal).
   const intentSlug = categorySlug(intent.category);

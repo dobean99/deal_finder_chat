@@ -164,11 +164,37 @@ export function queryPosition(name: string, terms: string[]): number {
 export interface SearchOptions {
   /** Drop the price ceiling (no-match cascade step 2). */
   ignorePriceMax?: boolean;
-  /** Search by category only, ignoring keywords (cascade step 3). */
+  /** Drop the brand from the query (cascade step 3 — brand not stocked). */
+  ignoreBrand?: boolean;
+  /** Search by category only, ignoring keywords (cascade step 4). */
   categoryOnly?: boolean;
-  /** Override category (cascade step 4 — adjacent categories). */
+  /** Override category (cascade step 5 — adjacent categories). */
   categoryOverride?: string;
   limit?: number;
+}
+
+/**
+ * Build the query string from an intent. Tokens are deduped
+ * diacritic-insensitively (parsers often emit the brand inside keywords too)
+ * and the brand goes LAST: Typesense drops unmatched tokens right-to-left, so
+ * a leading brand the catalog doesn't stock would otherwise pin every
+ * token-drop attempt to zero results (the "cerave" bug, 2026-07-27).
+ */
+export function buildQueryTerms(intent: SearchIntent, ignoreBrand: boolean): string {
+  const brandNorm = intent.brand ? normalizeVi(intent.brand) : undefined;
+  const seen = new Set<string>();
+  const words: string[] = [];
+  for (const kw of intent.keywords) {
+    for (const w of kw.split(/\s+/)) {
+      const norm = normalizeVi(w);
+      if (!norm || seen.has(norm)) continue;
+      if (ignoreBrand && brandNorm && norm === brandNorm) continue;
+      seen.add(norm);
+      words.push(w);
+    }
+  }
+  if (!ignoreBrand && brandNorm && !seen.has(brandNorm)) words.push(intent.brand!);
+  return words.join(" ") || "*";
 }
 
 /**
@@ -190,9 +216,7 @@ export async function search(intent: SearchIntent, opts: SearchOptions = {}): Pr
   if (intent.priceMax != null && !opts.ignorePriceMax) filters.push(`price:<=${intent.priceMax}`);
   if (intent.mustHaveVoucher) filters.push("hasVoucher:=true");
 
-  const queryTerms = opts.categoryOnly
-    ? "*"
-    : [intent.brand, ...intent.keywords].filter(Boolean).join(" ") || "*";
+  const queryTerms = opts.categoryOnly ? "*" : buildQueryTerms(intent, opts.ignoreBrand ?? false);
 
   // Hybrid (keyword + semantic) when the index has embeddings and there are
   // actual query terms; wildcard/category browses stay keyword-only.
@@ -219,6 +243,11 @@ export async function search(intent: SearchIntent, opts: SearchOptions = {}): Pr
     q: queryTerms,
     query_by: hybrid ? "name,embedding" : "name",
     num_typos: 2,
+    // Brand queries are precision-critical: with token-dropping allowed, a
+    // missing brand silently degrades to generic matches still labeled
+    // "exact". Require every token instead — a true zero lets the cascade
+    // relax the brand explicitly and label the result honestly.
+    drop_tokens_threshold: intent.brand && !opts.ignoreBrand && !opts.categoryOnly ? 0 : undefined,
     // Weight matches near the start of the name so the over-fetched pool holds
     // actual products, not just the cheapest accessories mentioning the term.
     prioritize_token_position: true,
