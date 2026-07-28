@@ -13,7 +13,8 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { getAccessTrade, type AtDatafeedItem } from "@/lib/affiliate/accesstrade";
-import { upsertProducts, type ProductDoc } from "@/lib/search/typesense";
+import { upsertProducts, getTypesense, type ProductDoc } from "@/lib/search/typesense";
+import { categorySlug } from "@/lib/search/categories";
 
 const PAGE_LIMIT = 100;
 const MAX_API_PAGES = 600; // safety bound for API-paged pulls (largest live feed: Tiki ~55.5k rows ≈ 555 pages)
@@ -71,12 +72,20 @@ async function merchantsWithActiveVouchers(): Promise<Set<string>> {
  * genuine list price is added.
  *
  * `cate` is the category slug and is usually an empty string in this feed.
+ *
+ * Exception: sources with a verified real list price (TikTok feed) pass it
+ * via original_price_vnd; it renders as a strikethrough only when above the
+ * sale price.
  */
 function toProductFields(item: AtDatafeedItem) {
+  const original =
+    item.original_price_vnd != null && item.original_price_vnd > item.price
+      ? Math.round(item.original_price_vnd)
+      : null;
   return {
     name: item.name,
     price: Math.round(item.price),
-    originalPrice: null,
+    originalPrice: original,
     image: item.image || null,
     category: item.cate || null,
     affLink: item.aff_link,
@@ -258,6 +267,100 @@ export async function ingestProducts(domain: string, cat?: string): Promise<Inge
     if (items.length < PAGE_LIMIT) break;
   }
   return { job: "products", processed, skippedUnapproved: skipped };
+}
+
+/**
+ * TikTok Shop affiliate feed → Product rows under merchant "tiktokshop".
+ * The feed (v2, cursor-paged) is TikTok's open-commission affiliate
+ * marketplace — no per-product aff_link is provided, so the link is composed
+ * as the same AccessTrade deep link the "Tạo link" tab produces
+ * (ACCESSTRADE_PUBLISHER_ID + DEEPLINK_CAMPAIGN_TIKTOK; job fails loud when
+ * unset). Categories map through categorySlug() from the feed's own chain
+ * when possible; the rest fall to the nightly LLM pass. Top 100 by
+ * units_sold get salesRank (the "Phổ biến" cap — flagging all ~5k would make
+ * the badge meaningless).
+ */
+export async function ingestTikTokProducts(maxPages = 100): Promise<IngestResult> {
+  const publisherId = process.env.ACCESSTRADE_PUBLISHER_ID;
+  const campaignId = process.env.DEEPLINK_CAMPAIGN_TIKTOK;
+  if (!publisherId || !campaignId) {
+    throw new Error("TikTok ingest needs ACCESSTRADE_PUBLISHER_ID and DEEPLINK_CAMPAIGN_TIKTOK");
+  }
+  const approved = await approvedMerchants();
+  if (!approved.has("tiktok_cps")) {
+    throw new Error("tiktok_cps campaign is not approved for this publisher (D2 gate)");
+  }
+
+  const at = getAccessTrade();
+  const items: AtDatafeedItem[] = [];
+  const unitsSold = new Map<string, number>();
+  // Each sort order surfaces a different slice of the marketplace and each
+  // cursor runs dry after a few hundred rows — the union is the catalog.
+  const SORTS = [
+    "BEST_SELLERS",
+    "RECOMMENDED",
+    "NEWLY_RELEASED",
+    "HIGH_COMMISSION_RATE",
+    "LOW_PRICE",
+    "HIGH_PRICE",
+  ];
+  const seen = new Set<string>();
+  for (const sort of SORTS) {
+    let pageToken: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const feed = await at.tiktokProducts(pageToken, 50, sort);
+      const products = feed.products ?? [];
+      if (products.length === 0) break;
+      for (const p of products) {
+        const price = Number(p.sales_price?.minimum_amount);
+        if (!p.id || seen.has(p.id)) continue;
+        if (!p.detail_link || !Number.isFinite(price) || p.has_inventory === false) continue;
+        seen.add(p.id);
+        const original = Number(p.original_price?.minimum_amount);
+        const leaf = p.category_chains?.filter((c) => c.local_name).slice(-1)[0]?.local_name;
+        items.push({
+          product_id: p.id,
+          merchant: "tiktokshop",
+          domain: "shop.tiktok.com",
+          name: p.title,
+          price,
+          original_price_vnd: Number.isFinite(original) ? original : undefined,
+          image: p.main_image_url || undefined,
+          cate: categorySlug(leaf) ?? undefined,
+          aff_link: `https://go.isclix.com/deep_link/${publisherId}/${campaignId}?url=${encodeURIComponent(p.detail_link)}`,
+        });
+        unitsSold.set(p.id, p.units_sold ?? 0);
+      }
+      pageToken = feed.next_page_token || undefined;
+      if (!pageToken) break;
+    }
+  }
+
+  const processed = await upsertAndIndex(items);
+
+  // "Phổ biến" tier: rank the top 100 by units_sold, clear the rest so a
+  // product that falls out of the tier loses the badge on the next run.
+  const top = [...unitsSold.entries()].sort((a, b) => b[1] - a[1]).slice(0, 100);
+  await prisma.product.updateMany({
+    where: { merchant: "tiktokshop", productId: { notIn: top.map(([id]) => id) } },
+    data: { salesRank: null },
+  });
+  for (let i = 0; i < top.length; i++) {
+    await prisma.product.updateMany({
+      where: { merchant: "tiktokshop", productId: top[i][0] },
+      data: { salesRank: i + 1 },
+    });
+  }
+  const ranked = await prisma.product.findMany({
+    where: { merchant: "tiktokshop" },
+    select: { id: true, salesRank: true },
+  });
+  await getTypesense()
+    .collections("products")
+    .documents()
+    .import(ranked.map((r) => ({ id: r.id, salesRank: r.salesRank ?? 0 })), { action: "emplace" });
+
+  return { job: "tiktok-products", processed, skippedUnapproved: 0 };
 }
 
 /**

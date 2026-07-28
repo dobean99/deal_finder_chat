@@ -46,6 +46,10 @@ export interface AtDatafeedItem {
   cate?: string;
   aff_link: string;
   url?: string;
+  /** Genuine list price in VND — set ONLY by sources that carry a real one
+   * (TikTok feed's original_price). Marketplace feeds without one must leave
+   * this unset so no fake strikethrough renders (R3). */
+  original_price_vnd?: number;
 }
 
 export interface AtOfferCoupon {
@@ -70,6 +74,28 @@ export interface AtTopProduct {
   merchant: string;
   rank?: number;
   order_count?: number;
+}
+
+/** Row from /v2/tiktokshop_product_feeds (verified live 2026-07-28). Prices
+ * are numeric strings; commission.rate is a fraction on v2 (0.042 = 4.2%). */
+export interface AtTikTokProduct {
+  id: string;
+  title: string;
+  main_image_url?: string;
+  detail_link: string;
+  shop?: { name?: string };
+  units_sold?: number;
+  has_inventory?: boolean;
+  original_price?: { currency?: string; minimum_amount?: string; maximum_amount?: string };
+  sales_price?: { currency?: string; minimum_amount?: string; maximum_amount?: string };
+  commission?: { rate?: number | string; currency?: string; amount?: string };
+  category_chains?: { id?: string; local_name?: string; is_leaf?: boolean }[];
+}
+
+export interface AtTikTokFeedPage {
+  total_count?: number;
+  next_page_token?: string;
+  products?: AtTikTokProduct[];
 }
 
 interface Paged<T> {
@@ -97,8 +123,12 @@ export class AccessTradeAdapter {
     return fn();
   }
 
-  private async request<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {
-    const url = new URL(`${BASE_URL}${path}`);
+  private async request<T>(
+    path: string,
+    params: Record<string, string | number | undefined>,
+    base: string = BASE_URL,
+  ): Promise<T> {
+    const url = new URL(`${base}${path}`);
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined) url.searchParams.set(k, String(v));
     }
@@ -154,6 +184,28 @@ export class AccessTradeAdapter {
   /** Voucher/offer information (covers vouchers per D6). */
   async offers(merchant?: string, page = 1, limit = 100): Promise<Paged<AtOffer>> {
     return this.request<Paged<AtOffer>>("/offers_informations", { merchant, page, limit });
+  }
+
+  /**
+   * One cursor page of the TikTok Shop affiliate product feed
+   * (/v2/tiktokshop_product_feeds — the pub2 "Tiktok Shop Affiliate" tool's
+   * data, exposed on the classic token). limit > 50 → server internal error;
+   * pagination is page_token-only (no page/offset).
+   */
+  async tiktokProducts(
+    pageToken?: string,
+    limit = 50,
+    sortField = "BEST_SELLERS",
+  ): Promise<AtTikTokFeedPage> {
+    const res = await this.request<{ status?: boolean; message?: string; data?: AtTikTokFeedPage }>(
+      "/tiktokshop_product_feeds",
+      { sort_field: sortField, limit, page_token: pageToken },
+      "https://api.accesstrade.vn/v2",
+    );
+    if (res.status === false) {
+      throw new Error(`tiktokshop_product_feeds failed: ${res.message ?? "unknown error"}`);
+    }
+    return res.data ?? {};
   }
 
   /** Top products (sales-volume quality proxy). date range required by API. */

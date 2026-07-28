@@ -16,6 +16,7 @@ import {
   ingestProducts,
   ingestVouchers,
   ingestTopSellers,
+  ingestTikTokProducts,
   aggregateEngagement,
 } from "@/lib/ingest/accesstrade-ingest";
 
@@ -82,9 +83,21 @@ async function main() {
 
   if (!vouchersOnly) {
     for (const domain of await ingestedDomains()) {
+      // The TikTok feed has its own job (cursor API, composed deep links).
+      if (domain === "shop.tiktok.com") continue;
       console.log(`${stamp()} products: ${domain} ...`);
       const r = await ingestProducts(domain);
       console.log(`${stamp()} products: ${domain} — ${r.processed} upserted, ${r.skippedUnapproved} unapproved skipped`);
+    }
+
+    // Best-effort: TikTok needs deep-link env vars; their absence shouldn't
+    // sink the marketplace refreshes above.
+    try {
+      console.log(`${stamp()} products: tiktokshop (v2 feed) ...`);
+      const t = await ingestTikTokProducts();
+      console.log(`${stamp()} products: tiktokshop — ${t.processed} upserted`);
+    } catch (e) {
+      console.warn(`${stamp()} tiktokshop skipped: ${e instanceof Error ? e.message : e}`);
     }
   }
 
