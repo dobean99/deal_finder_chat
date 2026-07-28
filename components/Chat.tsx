@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatResponse } from "@/app/api/chat/route";
 import type { SuggestionsResponse } from "@/app/api/suggestions/route";
 import { LinkBuilder } from "@/components/LinkBuilder";
+import { VoucherList } from "@/components/VoucherList";
 import { ProductCard } from "@/components/ProductCard";
 import { ServiceCard } from "@/components/ServiceCard";
 import { PromoBanner, type BannerItem } from "@/components/PromoBanner";
@@ -48,21 +49,30 @@ function LoadingBar() {
   return <div className="h-6 w-56 animate-pulse rounded-full bg-neutral-200" aria-label="Đang tìm deal" />;
 }
 
+type Tab = "chat" | "link" | "voucher";
+
+/** Shareable URL per tab — /sharelink and /voucher render Chat pre-switched. */
+const TAB_URLS: Record<Tab, string> = {
+  chat: "/",
+  link: "/sharelink",
+  voucher: "/voucher",
+};
+
 export function Chat({
   banners = [],
   initialTab = "chat",
 }: {
   banners?: BannerItem[];
-  /** "link" when rendered from /sharelink — the tab's shareable URL. */
-  initialTab?: "chat" | "link";
+  /** Non-"chat" when rendered from a tab's shareable URL (see TAB_URLS). */
+  initialTab?: Tab;
 }) {
-  const [tab, setTab] = useState<"chat" | "link">(initialTab);
+  const [tab, setTab] = useState<Tab>(initialTab);
 
-  function switchTab(key: "chat" | "link") {
+  function switchTab(key: Tab) {
     setTab(key);
-    // Keep the URL shareable per tab (/ ↔ /sharelink) without a server
-    // round-trip; Next syncs usePathname with native replaceState.
-    window.history.replaceState(null, "", key === "link" ? "/sharelink" : "/");
+    // Keep the URL shareable per tab without a server round-trip; Next syncs
+    // usePathname with native replaceState.
+    window.history.replaceState(null, "", TAB_URLS[key]);
   }
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -127,6 +137,7 @@ export function Chat({
           [
             ["chat", "Trò chuyện"],
             ["link", "Tạo link"],
+            ["voucher", "Voucher"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -134,24 +145,36 @@ export function Chat({
             role="tab"
             aria-selected={tab === key}
             onClick={() => switchTab(key)}
-            className={`flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl text-lg font-bold focus:outline-2 focus:outline-offset-2 focus:outline-ink ${tab === key
-                ? "bg-ink text-white"
-                : "border border-neutral-200 bg-white text-neutral-500"
+            // Both states carry a border (ink-on-ink when active) so the pill
+            // geometry is identical and nothing nudges on switch.
+            className={`flex min-h-14 flex-1 items-center justify-center gap-1.5 rounded-2xl border text-base font-bold sm:gap-2 sm:text-lg focus:outline-2 focus:outline-offset-2 focus:outline-ink ${tab === key
+                ? "border-ink bg-ink text-white"
+                : "border-neutral-200 bg-white text-neutral-500"
               }`}
           >
-            {tab === key && (
-              <span className="text-[10px] text-shopee" aria-hidden>
-                ●
-              </span>
-            )}
+            {/* Dot always occupies space so the label doesn't nudge on switch. */}
+            <span
+              className={`text-[10px] text-shopee ${tab === key ? "" : "opacity-0"}`}
+              aria-hidden
+            >
+              ●
+            </span>
             {label}
           </button>
         ))}
       </div>
 
       {tab === "link" && (
-        <main className="flex-1 py-4 pb-40">
+        // No pb-40 here: the fixed composer bar only exists on the chat tab,
+        // and the extra padding forced a scrollbar (→ layout shift on switch).
+        <main className="flex-1 py-4">
           <LinkBuilder />
+        </main>
+      )}
+
+      {tab === "voucher" && (
+        <main className="flex-1 py-4 pb-8">
+          <VoucherList onCtaClick={fireCompletionBeacon} />
         </main>
       )}
 

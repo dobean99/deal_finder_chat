@@ -26,6 +26,13 @@
   }
 }
 
+/* Reserve the scrollbar gutter so content doesn't shift sideways when page
+   height crosses the viewport (e.g. switching between chat and link tabs on
+   Windows, where classic scrollbars take layout space). */
+html {
+  scrollbar-gutter: stable;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
