@@ -92,6 +92,27 @@ back-to-back slots must not overlap.
 | Products: Điện Máy Xanh | `0 3 * * *` | `/api/internal/ingest/products-nightly` | `{"domain":"dienmayxanh.com"}` |
 | Vouchers 6h | `0 */6 * * *` | `/api/internal/ingest/vouchers-6h` | `{}` |
 | Top sellers | `30 3 * * *` | `/api/internal/ingest/top-sellers` | `{}` (run after products) |
+| Conversions | `15 */6 * * *` | `/api/internal/ingest/conversions` | `{}` (last 90 days; `{"days":N}` up to 365) |
+
+`scripts/ingest-all.ts` (the Windows scheduled tasks) also runs the
+conversions sync on both its full and `--vouchers-only` passes.
+
+### Conversion attribution
+
+Every `/go/*` redirect stamps `utm_source=dealfinder`, `utm_campaign=<surface>`
+(product, voucher, link, msearch, service, banner) and `utm_content=<clickId>`
+on the AccessTrade link (`lib/tracking/outbound.ts`). The Tạo link tab's own
+AccessTrade links get `utm_campaign=link-direct` + `utm_content=<SharedLink slug>`.
+The conversions job copies `/v1/transactions` into the `Conversion` table
+(keyed on `conversion_id` — AccessTrade's `id` is shared by all lines of an
+order). See commission per surface and per product/link:
+
+```sh
+npm run report:conversions                     # last 30 days
+npm run report:conversions -- --days 90 --sync # pull from AccessTrade first
+```
+
+Orders from clicks made before tagging shipped show as `(untagged)`.
 
 To add/remove a merchant later, add/remove a products row here — nothing else
 changes (the job only indexes approved campaigns, so an unapproved domain
@@ -113,5 +134,5 @@ npm run build && npm start   # production
 Checks:
 
 - `POST /api/chat {"prompt":"tai nghe bluetooth chống ồn dưới 1 triệu"}` → ranked `results` with `/go/{id}` hrefs, zero `aff_link` strings.
-- `GET /go/<valid id>` → 302 with `df_click` cookie + `?dfclid=` on the outbound URL; `GET /go/garbage` → 404.
+- `GET /go/<valid id>` → 302 with `df_click` cookie + `utm_source=dealfinder&utm_content=<clickId>` on the outbound URL; `GET /go/garbage` → 404.
 - `npm run typecheck`, `npm run lint`, `npm run eval:ranking` (25/25).

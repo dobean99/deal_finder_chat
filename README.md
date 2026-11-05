@@ -16,7 +16,7 @@ Product data comes from the AccessTrade affiliate network (Shopee plus brand-ele
 
 1. **Ingest** — `POST /api/internal/ingest/{job}` endpoints (secured by `x-ingest-secret`) pull AccessTrade datafeeds per merchant domain, upsert into Postgres, and sync to Typesense. Jobs: `products-nightly`, `vouchers-6h`, `top-sellers`.
 2. **Chat** — `POST /api/chat` parses the prompt into intent with Claude, queries Typesense, and returns ranked results. Responses never expose raw `aff_link` URLs — only `/go/{id}` hrefs.
-3. **Redirect** — `GET /go/{id}` 302s to the affiliate URL, setting a `df_click` cookie and appending a `dfclid` click id (IPs are salted-hashed; no raw PII stored).
+3. **Redirect** — `GET /go/{id}` 302s to the affiliate URL, setting a `df_click` cookie and stamping the click id as `utm_content` so AccessTrade conversions can be joined back to it (IPs are salted-hashed; no raw PII stored).
 
 ## Quick start
 

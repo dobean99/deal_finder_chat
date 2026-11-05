@@ -80,7 +80,7 @@ npx next dev -p 3100   # run in background; ready in ~10s
 ```
 
 Then drive it end-to-end with the smoke driver (chat exact + no-match
-cascade, /go 302 + cookie + dfclid, 404, completion beacon, ClickEvent row
+cascade, /go 302 + cookie + utm_content clickId, 404, completion beacon, ClickEvent row
 in the DB — 15 checks):
 
 ```bash

@@ -5,7 +5,7 @@
 //    `q` is a plain-text search phrase interpolated into a fixed URL template
 //    — never a URL, so no open redirect surface. Length-capped, URL-encoded.
 //  - Fresh clickId per hit: ClickEvent (fire-and-forget, synthetic
-//    msearch:<slug> productId), attribution cookie re-armed, ?dfclid= on the
+//    msearch:<slug> productId), attribution cookie re-armed, clickId as utm_content on the
 //    outbound link. IP salted-hashed.
 //  - Unknown slug or unset campaign env var → 404 (fails closed).
 
@@ -20,6 +20,7 @@ import {
 } from "@/lib/config";
 import { hashIp } from "@/lib/tracking/ip";
 import { isWebviewUa } from "@/lib/tracking/webview";
+import { withClickTracking } from "@/lib/tracking/outbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,9 +63,8 @@ export async function GET(
 
   const url = new URL(`https://go.isclix.com/deep_link/${publisherId}/${campaignId}`);
   url.searchParams.set("url", target);
-  url.searchParams.set("dfclid", clickId);
 
-  const res = NextResponse.redirect(url.toString(), 302);
+  const res = NextResponse.redirect(withClickTracking(url.toString(), clickId, "msearch"), 302);
   res.cookies.set(ATTRIBUTION_COOKIE, clickId, {
     maxAge: ATTRIBUTION_COOKIE_MAX_AGE_S, // re-armed on every hit (PRD §3.3)
     httpOnly: true,

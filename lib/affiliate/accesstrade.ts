@@ -98,6 +98,35 @@ export interface AtTikTokFeedPage {
   products?: AtTikTokProduct[];
 }
 
+/** Row from /v1/transactions (verified live 2026-11-05). Times are naive
+ * ISO strings in `time_zone` (observed "+00:00"). utm_* echo what we stamped
+ * on the outbound link (lib/tracking/outbound.ts); empty strings when unset. */
+export interface AtTransaction {
+  /** Order-level id — SHARED by all lines of one order (incl. brand bonus). */
+  id: string;
+  /** Unique per order line; the correct primary key. */
+  conversion_id?: number;
+  is_brand_bonus?: boolean;
+  transaction_id?: string;
+  merchant: string;
+  campaign_no?: string;
+  status: number; // 0 pending, 1 approved, 2 rejected
+  is_confirmed?: number;
+  commission?: number;
+  transaction_value?: number;
+  product_name?: string;
+  product_quantity?: number;
+  reason_rejected?: string;
+  utm_source?: string;
+  utm_campaign?: string;
+  utm_content?: string;
+  click_time?: string;
+  transaction_time: string;
+  update_time?: string;
+  time_zone?: string;
+  _extra?: { parameters?: { click_referer?: string } };
+}
+
 interface Paged<T> {
   data: T[];
   total?: number;
@@ -206,6 +235,20 @@ export class AccessTradeAdapter {
       throw new Error(`tiktokshop_product_feeds failed: ${res.message ?? "unknown error"}`);
     }
     return res.data ?? {};
+  }
+
+  /**
+   * One page of conversions whose transaction_time falls in [since, until].
+   * A 1-year window worked live; the response carries `total_page`.
+   */
+  async transactions(
+    since: Date,
+    until: Date,
+    page = 1,
+    limit = 100,
+  ): Promise<Paged<AtTransaction> & { total_page?: number }> {
+    const fmt = (d: Date) => d.toISOString().slice(0, 19) + "Z";
+    return this.request("/transactions", { since: fmt(since), until: fmt(until), page, limit });
   }
 
   /** Top products (sales-volume quality proxy). date range required by API. */

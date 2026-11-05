@@ -13,22 +13,22 @@ datasource db {
 }
 
 model Product {
-  id            String    @id @default(cuid())
-  productId     String // AccessTrade product_id
-  merchant      String // shopee | lazada | tiktokshop
-  domain        String
-  name          String
-  price         Int // integer VND
-  originalPrice Int?
-  image         String?
-  category      String?
-  affLink       String // AccessTrade deeplink (never sent to client raw)
-  salesRank     Int? // from top_products; feeds quality proxy
-  rating        Float? // reserved; backfilled from platform APIs later
-  clicks30d      Int @default(0) // our own CTR signal, aggregated nightly from ClickEvent
-  completions30d Int @default(0) // clicks that fired the completion beacon (stronger signal)
-  updatedAt     DateTime  @updatedAt
-  vouchers      Voucher[]
+  id             String    @id @default(cuid())
+  productId      String // AccessTrade product_id
+  merchant       String // shopee | lazada | tiktokshop
+  domain         String
+  name           String
+  price          Int // integer VND
+  originalPrice  Int?
+  image          String?
+  category       String?
+  affLink        String // AccessTrade deeplink (never sent to client raw)
+  salesRank      Int? // from top_products; feeds quality proxy
+  rating         Float? // reserved; backfilled from platform APIs later
+  clicks30d      Int       @default(0) // our own CTR signal, aggregated nightly from ClickEvent
+  completions30d Int       @default(0) // clicks that fired the completion beacon (stronger signal)
+  updatedAt      DateTime  @updatedAt
+  vouchers       Voucher[]
 
   @@unique([merchant, productId])
   @@index([merchant, category])
@@ -59,6 +59,43 @@ model SharedLink {
   createdAt DateTime @default(now())
 
   @@unique([merchant, targetUrl])
+}
+
+// One AccessTrade conversion (order line) from /v1/transactions, synced by
+// the `conversions` ingest job. utmContent is what we stamped on the outbound
+// link (lib/tracking/outbound.ts): a ClickEvent.clickId for /go/* clicks, or
+// a SharedLink.id for "link-direct" (Tạo link's own AccessTrade links). It's
+// NULL for orders from clicks made before tagging existed or from elsewhere.
+// Status changes (pending → approved/rejected) are picked up by re-syncing a
+// rolling window, so rows are upserted, never just inserted.
+model Conversion {
+  // AccessTrade `conversion_id` — unique per order LINE. Their `id` is shared
+  // by every line of one order (incl. Shopee brand-bonus lines), so keying on
+  // it silently drops commission (seen live: 768k₫ collapsed to 422k₫).
+  id              String    @id
+  atOrderKey      String // AccessTrade `id` (order-level, shared across lines)
+  isBrandBonus    Boolean   @default(false)
+  merchant        String
+  campaignNo      String?
+  orderId         String? // AccessTrade `transaction_id` (merchant order id)
+  productName     String?
+  quantity        Int?
+  status          Int // 0 pending, 1 approved, 2 rejected
+  isConfirmed     Boolean   @default(false) // locked for payout
+  commissionVnd   Int
+  orderValueVnd   Int
+  reasonRejected  String?
+  utmSource       String?
+  utmCampaign     String?
+  utmContent      String?
+  clickReferer    String?
+  clickTime       DateTime?
+  transactionTime DateTime
+  atUpdatedAt     DateTime? // AccessTrade `update_time`
+  syncedAt        DateTime  @updatedAt
+
+  @@index([utmContent])
+  @@index([transactionTime])
 }
 
 model ClickEvent {

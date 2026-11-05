@@ -3,7 +3,7 @@
 //  - Destination is the Voucher row's stored AccessTrade aff_link, resolved
 //    ONLY server-side — never from the query string.
 //  - Fresh clickId per hit: ClickEvent (fire-and-forget, synthetic
-//    voucher:<id> productId), attribution cookie re-armed, ?dfclid= on the
+//    voucher:<id> productId), attribution cookie re-armed, clickId as utm_content on the
 //    outbound link. IP salted-hashed.
 //  - Unknown id → 404. Expired vouchers are deleted by the 6h ingest, so
 //    stale shared URLs fail closed on their own.
@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { ATTRIBUTION_COOKIE, ATTRIBUTION_COOKIE_MAX_AGE_S } from "@/lib/config";
 import { hashIp } from "@/lib/tracking/ip";
 import { isWebviewUa } from "@/lib/tracking/webview";
+import { withClickTracking } from "@/lib/tracking/outbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,14 +50,7 @@ export async function GET(
     })
     .catch((err) => console.error("[go/v] ClickEvent write failed", err));
 
-  let destination: string;
-  try {
-    const url = new URL(voucher.affLink);
-    url.searchParams.set("dfclid", clickId);
-    destination = url.toString();
-  } catch {
-    destination = voucher.affLink; // malformed stored link — pass through as-is
-  }
+  const destination = withClickTracking(voucher.affLink, clickId, "voucher");
 
   const res = NextResponse.redirect(destination, 302);
   res.cookies.set(ATTRIBUTION_COOKIE, clickId, {

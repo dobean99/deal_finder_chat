@@ -2,9 +2,9 @@
 //  - Destination resolved ONLY from Postgres by id; unknown id → 404. The query
 //    string is never used as a destination (no open redirect).
 //  - A fresh clickId per hit: written as a ClickEvent (fire-and-forget), set as
-//    the attribution cookie (maxAge re-armed every hit), AND appended to the
-//    outbound URL as ?dfclid=<clickId> — the webview-resilient first-party
-//    record that survives cookie stripping.
+//    the attribution cookie (maxAge re-armed every hit), AND stamped on the
+//    outbound URL as utm_content=<clickId> (lib/tracking/outbound.ts) — the
+//    join key AccessTrade echoes back on each conversion (F11).
 //  - Webview detection is UA-based and recorded as isWebview; v1 still routes
 //    through the AccessTrade aff_link (their server-side tracking survives
 //    webviews). No hand-built native deeplinks until completion data says so.
@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import { ATTRIBUTION_COOKIE, ATTRIBUTION_COOKIE_MAX_AGE_S } from "@/lib/config";
 import { hashIp } from "@/lib/tracking/ip";
 import { isWebviewUa } from "@/lib/tracking/webview";
+import { withClickTracking } from "@/lib/tracking/outbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,17 +52,9 @@ export async function GET(
     })
     .catch((err) => console.error("[go] ClickEvent write failed", err));
 
-  // Append clickId to the outbound aff_link (first-party click truth, F11).
-  // NOTE (v1.5): paid-conversion reconciliation additionally needs clickId
-  // stamped as a sub-id via AccessTrade's create-link endpoint — not built yet.
-  let destination: string;
-  try {
-    const url = new URL(product.affLink);
-    url.searchParams.set("dfclid", clickId);
-    destination = url.toString();
-  } catch {
-    destination = product.affLink; // malformed stored link — pass through as-is
-  }
+  // clickId rides to AccessTrade as utm_content so the conversions job can
+  // join orders back to this click (F11).
+  const destination = withClickTracking(product.affLink, clickId, "product");
 
   const res = NextResponse.redirect(destination, 302);
   res.cookies.set(ATTRIBUTION_COOKIE, clickId, {

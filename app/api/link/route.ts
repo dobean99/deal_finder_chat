@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { DEEPLINK_MERCHANTS } from "@/lib/config";
+import { UTM_SOURCE, type ClickKind } from "@/lib/tracking/outbound";
 
 export const runtime = "nodejs";
 
@@ -86,10 +87,25 @@ interface AtProductLinkResponse {
   };
 }
 
+/**
+ * utm tags for the AccessTrade links themselves (aff_link + shorten.asia),
+ * which bypass /go/l and so never get a ClickEvent. utm_content carries the
+ * SharedLink slug instead of a clickId, so the conversions job can still
+ * credit an order to the link that produced it.
+ */
+function directLinkUtm(slug: string | null): Record<string, string> {
+  return {
+    utm_source: UTM_SOURCE,
+    utm_campaign: "link-direct" satisfies ClickKind,
+    ...(slug ? { utm_content: slug } : {}),
+  };
+}
+
 /** Best-effort shorten.asia link via AccessTrade — never fails the request. */
 async function createShortLink(
   campaignId: string,
   targetUrl: string,
+  utm: Record<string, string>,
 ): Promise<{ affLink?: string; shortLink?: string }> {
   const token = process.env.ACCESSTRADE_TOKEN;
   if (!token) return {};
@@ -100,7 +116,8 @@ async function createShortLink(
         Authorization: `Token ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ campaign_id: campaignId, urls: [targetUrl] }),
+      // utm_* are accepted here and echoed into aff_link (verified 2026-11-05).
+      body: JSON.stringify({ campaign_id: campaignId, urls: [targetUrl], ...utm }),
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return {};
@@ -158,11 +175,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const targetUrl = target.toString();
-  const composed = `https://go.isclix.com/deep_link/${publisherId}/${campaignId}?url=${encodeURIComponent(targetUrl)}`;
-  const [short, slug] = await Promise.all([
-    createShortLink(campaignId, targetUrl),
-    upsertSharedLink(merchant.merchant, targetUrl),
-  ]);
+  // Slug first: it's the attribution id stamped on the AccessTrade links.
+  const slug = await upsertSharedLink(merchant.merchant, targetUrl);
+  const utm = directLinkUtm(slug);
+  const composedUrl = new URL(`https://go.isclix.com/deep_link/${publisherId}/${campaignId}`);
+  composedUrl.searchParams.set("url", targetUrl);
+  for (const [k, v] of Object.entries(utm)) composedUrl.searchParams.set(k, v);
+  const composed = composedUrl.toString();
+  const short = await createShortLink(campaignId, targetUrl, utm);
   return NextResponse.json({
     // Prefer AccessTrade's own aff_link (it carries their sub-id tagging).
     affLink: short.affLink ?? composed,

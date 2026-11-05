@@ -61,9 +61,9 @@ async function main() {
   });
   const location = goRes.headers.get("location") ?? "";
   const setCookie = goRes.headers.get("set-cookie") ?? "";
-  const clickId = /dfclid=([0-9a-f-]+)/.exec(location)?.[1];
+  const clickId = /utm_content=([0-9a-f-]{36})/.exec(location)?.[1];
   check("/go/<valid> is 302", goRes.status === 302);
-  check("outbound URL carries dfclid", !!clickId);
+  check("outbound URL carries clickId (utm_content)", !!clickId);
   check("df_click cookie set + re-armed", /df_click=/.test(setCookie) && /Max-Age=/.test(setCookie));
 
   // 4. /go/<garbage> → 404

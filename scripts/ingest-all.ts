@@ -7,8 +7,9 @@
 //   npx tsx --env-file=.env scripts/ingest-all.ts                 # full refresh
 //   npx tsx --env-file=.env scripts/ingest-all.ts --vouchers-only # 6h voucher job
 //
-// Full refresh = products for every ingested domain + vouchers + top-sellers
-// (which also re-syncs the whole Typesense index from Postgres).
+// Full refresh = products for every ingested domain + vouchers + conversions
+// + top-sellers (which also re-syncs the whole Typesense index from Postgres).
+// --vouchers-only still syncs conversions.
 
 import { execFileSync, spawn } from "node:child_process";
 import { prisma } from "@/lib/db";
@@ -19,6 +20,7 @@ import {
   ingestTikTokProducts,
   aggregateEngagement,
 } from "@/lib/ingest/accesstrade-ingest";
+import { ingestConversions } from "@/lib/ingest/conversions";
 
 /**
  * Dev-machine plumbing: Typesense lives in Docker inside WSL Ubuntu, and the
@@ -104,6 +106,16 @@ async function main() {
   console.log(`${stamp()} vouchers ...`);
   const v = await ingestVouchers();
   console.log(`${stamp()} vouchers — ${v.processed} upserted, ${v.skippedUnapproved} unapproved skipped`);
+
+  // Runs on both schedules (6h is plenty for status changes). Best-effort:
+  // a reporting sync must not sink the catalog refresh.
+  try {
+    console.log(`${stamp()} conversions (last 90 days) ...`);
+    const c = await ingestConversions();
+    console.log(`${stamp()} conversions — ${c.processed} synced`);
+  } catch (e) {
+    console.warn(`${stamp()} conversions skipped: ${e instanceof Error ? e.message : e}`);
+  }
 
   if (!vouchersOnly) {
     console.log(`${stamp()} top-sellers (+ full index re-sync) ...`);

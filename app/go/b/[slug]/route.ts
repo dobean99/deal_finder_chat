@@ -1,7 +1,7 @@
 // GET /go/b/[slug] — tracked redirect for header-banner campaigns (Highlands,
 // The Coffee House). Same invariants as /go/[id]: destination resolved ONLY
 // server-side (from BANNER_CAMPAIGNS + env, never the query string), fresh
-// clickId per hit written as a ClickEvent + attribution cookie + ?dfclid=,
+// clickId per hit written as a ClickEvent + attribution cookie + utm_content=<clickId>,
 // IP salted-hashed. Unknown slug or unset env var → 404 (tile is hidden then,
 // but the URL must still fail closed).
 
@@ -16,6 +16,7 @@ import {
 } from "@/lib/config";
 import { hashIp } from "@/lib/tracking/ip";
 import { isWebviewUa } from "@/lib/tracking/webview";
+import { withClickTracking } from "@/lib/tracking/outbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,14 +51,7 @@ export async function GET(
     })
     .catch((err) => console.error("[go/b] ClickEvent write failed", err));
 
-  let destination: string;
-  try {
-    const url = new URL(affLink);
-    url.searchParams.set("dfclid", clickId);
-    destination = url.toString();
-  } catch {
-    destination = affLink; // malformed configured link — pass through as-is
-  }
+  const destination = withClickTracking(affLink, clickId, "banner");
 
   const res = NextResponse.redirect(destination, 302);
   res.cookies.set(ATTRIBUTION_COOKIE, clickId, {

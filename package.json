@@ -13,6 +13,7 @@
     "ingest:all": "tsx --env-file=.env scripts/ingest-all.ts",
     "ingest:vouchers": "tsx --env-file=.env scripts/ingest-all.ts --vouchers-only",
     "categorize": "tsx --env-file=.env scripts/categorize-products.ts",
+    "report:conversions": "tsx --env-file=.env scripts/conversions-report.ts",
     "test:e2e": "playwright test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"

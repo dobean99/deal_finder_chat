@@ -100,7 +100,7 @@ test.describe("service referral cards", () => {
     expect(res.status()).toBe(302);
     const location = res.headers()["location"] ?? "";
     expect(location).toMatch(/^https:\/\/go\.isclix\.com\/deep_link\//);
-    expect(location).toContain("dfclid=");
+    expect(location).toMatch(/utm_content=[0-9a-f-]{36}/);
     // Attribution cookie re-armed on the hit.
     expect(res.headers()["set-cookie"] ?? "").toContain("df_click=");
   });
@@ -120,7 +120,7 @@ test.describe("marketplace search handoff", () => {
     const location = res.headers()["location"] ?? "";
     expect(location).toMatch(/^https:\/\/go\.isclix\.com\/deep_link\//);
     expect(decodeURIComponent(location)).toContain("shopee.vn/search");
-    expect(location).toContain("dfclid=");
+    expect(location).toMatch(/utm_content=[0-9a-f-]{36}/);
   });
 
   test("/go/m fails closed without query or on unknown/unconfigured slugs", async ({ page }) => {

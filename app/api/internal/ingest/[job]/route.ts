@@ -3,6 +3,7 @@
 //   POST /api/internal/ingest/products-nightly  { domain?, cat? }
 //   POST /api/internal/ingest/vouchers-6h       { merchant? }
 //   POST /api/internal/ingest/top-sellers       {}
+//   POST /api/internal/ingest/conversions       { days? }  (default 90)
 // Auth: x-ingest-secret header must equal INGEST_SECRET.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -13,6 +14,7 @@ import {
   ingestTopSellers,
   type IngestResult,
 } from "@/lib/ingest/accesstrade-ingest";
+import { ingestConversions } from "@/lib/ingest/conversions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +33,7 @@ interface IngestBody {
   domain?: string;
   cat?: string;
   merchant?: string;
+  days?: number;
 }
 
 export async function POST(
@@ -56,6 +59,13 @@ export async function POST(
       case "top-sellers":
         result = await ingestTopSellers();
         break;
+      case "conversions": {
+        const days = Number(body.days);
+        result = await ingestConversions(
+          Number.isInteger(days) && days > 0 && days <= 365 ? days : undefined,
+        );
+        break;
+      }
       default:
         return NextResponse.json({ error: `unknown job: ${job}` }, { status: 404 });
     }
